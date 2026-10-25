@@ -88,7 +88,7 @@ function preloadDesktopShellPlugin(): Plugin {
   const shellModule = 'src/components/dashboard/DesktopDashboard.tsx';
   return {
     name: 'web-katrain-preload-desktop-shell',
-    apply: 'build',
+    apply: 'serve',
     transformIndexHtml: {
       order: 'post',
       handler(html, ctx) {
