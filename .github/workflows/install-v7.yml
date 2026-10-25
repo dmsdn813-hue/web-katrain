@@ -1,0 +1,31 @@
+name: Install generated V7 source
+on:
+  push:
+    paths:
+      - 'src/.coachv7.b64'
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode V7 source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, bz2, pathlib
+          encoded=pathlib.Path('src/.coachv7.b64').read_text().strip()
+          code=bz2.decompress(base64.b64decode(encoded))
+          pathlib.Path('src/CoachAppV7.tsx').write_bytes(code)
+          pathlib.Path('src/.coachv7.b64').unlink()
+          print('Installed V7 source',len(code),'bytes')
+          PY
+      - name: Commit generated source
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A src/CoachAppV7.tsx src/.coachv7.b64
+          git commit -m 'Install Go Coach V7 source' || exit 0
+          git push
