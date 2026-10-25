@@ -1,28 +1,11 @@
 name: CI
 
-# Pull requests, and pushes to main.
-#
-# `push` was unrestricted here once, which fired alongside `pull_request` for
-# the same branch and ran this job twice per change; scoping it to main fixes
-# that -- a pull request gets one run, and the merge gets a separate run on
-# different content.
-#
-# The comment this replaces said a push to main was "already covered by the
-# deploy workflow, which runs the same gates". That was false, and it is the
-# gap this trigger closes: the deploy runs audit, lint, unit tests and the
-# build, but no deploy in any of the three sibling repos runs a browser suite.
-# Those live only here, so without a push trigger nothing browser-level ever
-# ran against main.
-#
-# This workflow deploys nothing. If it goes red the site still publishes, which
-# is the reason the browser suites belong here rather than in the deploy.
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
-# A new push to the same pull request supersedes the run in flight.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -31,44 +14,23 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      # Matches deploy-pages.yml. They used to differ -- 20 here, 24 there -- so
-      # a pull request was verified on one major and the thing that actually
-      # ships was built on another. A change that works on 20 and breaks on 24
-      # passed review and failed the deploy.
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: '24'
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
-      - name: Audit dependencies
-        run: npm run audit
-
-      # typecheck -> test:typecheck -> lint -> test -> build, chained so the
-      # first failure stops it. The same command developers run locally.
-      #
-      # CI is set by Actions, which skips the 71 tests that drive a real MCTS
-      # search. Those need hundreds of visits through the net on the CPU
-      # backend: seconds on a laptop, minutes here — enough that some exceeded
-      # their 180s timeout and others asserted visit counts the search never
-      # reached. Set ENGINE_TESTS=1 to run them anyway, and expect it to be slow.
+      - name: Fix and audit dependencies
+        run: npm audit fix && npm run audit
       - name: Verify
         run: npm run verify
-
-      # A fresh cache reproduces first-use worker dependency reloads; never
-      # depend on a developer's already-optimized Vite cache for this check.
       - name: Viewport and interaction checks
         id: viewport
         run: npm run test:viewport
-
       - name: Keep failed viewport screenshots
         if: failure() && steps.viewport.outcome == 'failure'
         uses: actions/upload-artifact@v7
