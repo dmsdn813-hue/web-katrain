@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import AdvancedLessons from './AdvancedLessons';
 import { useGameStore } from './store/gameStore';
 import { getLiberties, isValidMove } from './utils/gameLogic';
 import { generateSgfFromTree, parseSgf } from './utils/sgf';
@@ -800,15 +801,19 @@ function App() {
         </section>
       </>}
       {activeTab==='learn'&&<>
-        <section className="ew-card ew-learnintro"><div className="ew-cardheading">🌱 처음부터 차근차근, 바둑 공부방</div><p className="ew-paragraph">어려운 용어를 외우지 않아도 괜찮아. 그림으로 익히고 직접 한 수 골라 보자.</p>
+        <AdvancedLessons/>
+        <details className="ew-card" style={{marginTop:10,marginBottom:14}}>
+          <summary style={{color:'#436c4b',fontWeight:900,cursor:'pointer',fontSize:14}}>🌱 기초 복습 3문제 (펼치기)</summary>
+        <section className="ew-card ew-learnintro" style={{border:0,padding:'12px 0 0',marginTop:0}}><div className="ew-cardheading">🌱 처음부터 차근차근, 바둑 공부방</div><p className="ew-paragraph">어려운 용어를 외우지 않아도 괜찮아. 그림으로 익히고 직접 한 수 골라 보자.</p>
           <div className="ew-progress">오늘의 연습 {dailyDone.length}/3 완료</div>
           <div className="ew-lessonchips">{LESSONS.map((v,i)=><button key={i} type="button" className={lessonIndex===i?'ew-lessonchip ew-lessonchip-active':'ew-lessonchip'} onClick={()=>changeLesson(i)}>{dailyDone.includes(i)?'✓ ':''}{i+1}. {v.title}</button>)}</div>
           <p className="ew-quiztitle">{currentLesson.question}</p>
           <TeachingBoard stones={currentLesson.stones} onPoint={lessonTry} selected={lessonGuess}/>
           {lessonGuess&&<p className={lessonCorrect?'ew-quizgood':'ew-quizretry'} role="status">{lessonCorrect?currentLesson.explanation:'아직 아니야! 바둑돌 바로 옆 빈자리를 살펴보거나, 모서리부터 찾아보자.'}</p>}
           <div className="ew-recordbtns"><button type="button" className="ew-recordbtn" onClick={()=>setLessonGuess(null)}>다시 해보기</button><button type="button" className="ew-recordbtn" onClick={()=>changeLesson((lessonIndex+1)%LESSONS.length)}>{lessonCorrect?'다음 연습 →':'다른 연습 보기 →'}</button></div>
-          <p className="ew-smallnote">미션 완료는 이 기기의 Safari에 날짜별로 기록돼. 로그인이 필요 없고 추가 요금도 없어.</p>
+          <p className="ew-smallnote">기초 복습 기록은 이 Safari에만 저장돼.</p>
         </section>
+        </details>
         <section className="ew-card"><div className="ew-cardheading">📖 그림으로 보는 바둑 용어</div><p className="ew-paragraph">용어를 누르면 5줄짜리 작은 바둑판으로 예를 볼 수 있어.</p>
           <div className="ew-term-grid">{(Object.keys(GO_TERMS) as GoTerm[]).map(term=><button type="button" className="ew-term-btn" key={term} aria-pressed={selectedTerm===term} onClick={()=>setSelectedTerm(term)}>{term}</button>)}</div>
           <div className="ew-termstudy"><TeachingBoard stones={termExample(selectedTerm).stones} marker={termExample(selectedTerm).marker}/><div><h3>{selectedTerm}</h3><p>{GO_TERMS[selectedTerm]}</p><p className="ew-smallnote">{termExample(selectedTerm).caption}</p></div></div>
