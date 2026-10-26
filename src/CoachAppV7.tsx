@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import AdvancedLessons from './AdvancedLessons';
+import ProTsumego from './ProTsumego';
 import { useGameStore } from './store/gameStore';
 import { getLiberties, isValidMove } from './utils/gameLogic';
 import { generateSgfFromTree, parseSgf } from './utils/sgf';
@@ -801,7 +802,11 @@ function App() {
         </section>
       </>}
       {activeTab==='learn'&&<>
-        <AdvancedLessons/>
+        <ProTsumego/>
+        <details className="ew-card" style={{marginTop:11,marginBottom:11}}>
+          <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🧠 이전 연습 16문제 · 가벼운 복습 (펼치기)</summary>
+          <div style={{paddingTop:12}}><AdvancedLessons/></div>
+        </details>
         <details className="ew-card" style={{marginTop:10,marginBottom:14}}>
           <summary style={{color:'#436c4b',fontWeight:900,cursor:'pointer',fontSize:14}}>🌱 기초 복습 3문제 (펼치기)</summary>
         <section className="ew-card ew-learnintro" style={{border:0,padding:'12px 0 0',marginTop:0}}><div className="ew-cardheading">🌱 처음부터 차근차근, 바둑 공부방</div><p className="ew-paragraph">어려운 용어를 외우지 않아도 괜찮아. 그림으로 익히고 직접 한 수 골라 보자.</p>
