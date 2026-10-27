@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import AdvancedLessons from './AdvancedLessons';
 import ProTsumego from './ProTsumego';
+import WhyThisMove from './WhyThisMove';
 import { useGameStore } from './store/gameStore';
 import { getLiberties, isValidMove } from './utils/gameLogic';
 import { generateSgfFromTree, parseSgf } from './utils/sgf';
@@ -412,8 +413,9 @@ function App() {
 
   const lastBlack=useMemo(()=>lastOf(currentNode,'black'),[currentNode,treeVersion]);
   const lastWhite=useMemo(()=>lastOf(currentNode,'white'),[currentNode,treeVersion]);
-  const suggestions=useMemo(()=>sorted(lastBlack?.parent??null).slice(0,3),[lastBlack,treeVersion]);
+  const suggestions=useMemo(()=>currentPlayer==='black'?sorted(currentNode).filter(o=>o.x>=0&&o.y>=0&&isValidMove(board,o.x,o.y,'black',currentNode.parent?.gameState.board)).slice(0,3):[],[currentNode,treeVersion,currentPlayer,board]);
   const coaching=useMemo(()=>explain(lastBlack),[lastBlack,treeVersion]);
+   const selectedCandidate=suggestions.find(o=>`${o.x},${o.y}`===highlight);
   const latest=moveHistory[moveHistory.length-1];
   const endedByPass=moveHistory.length>=2 && isPass(moveHistory[moveHistory.length-1]) && isPass(moveHistory[moveHistory.length-2]);
   const endedByResign=Boolean(currentNode.endState?.includes('+R'));
@@ -436,7 +438,7 @@ function App() {
   const displayStarPoints=displaySize===19?[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]]:displaySize===13?[[3,3],[3,9],[6,6],[9,3],[9,9]]:[[2,2],[2,6],[4,4],[6,2],[6,6]];
   const weakest=useMemo(()=>weakBlackGroup(displayBoard),[displayBoard]);
   const markers=useMemo(()=>weakest?{danger:new Set(weakest.stones.map(p=>`${p.x},${p.y}`)),liberties:new Set(weakest.liberties.map(p=>`${p.x},${p.y}`))}:{danger:new Set<string>(),liberties:new Set<string>()},[weakest]);
-  const currentCandidates=useMemo(()=>sorted(currentNode).filter(m=>m.x>=0&&m.y>=0).slice(0,3),[currentNode,treeVersion]);
+  const currentCandidates=suggestions;
   const reviewHighlights=useMemo(()=>reviewMoments(reviewFrames),[reviewFrames]);
   const reviewSummary=useMemo(()=>summarizeReview(reviewFrames),[reviewFrames]);
   const currentLesson=LESSONS[lessonIndex]!;
@@ -731,9 +733,11 @@ function App() {
         <div className="ew-lessonbox"><div className="ew-lessonlabel">▤ 선생님의 조언</div>{lastBlack&&<strong className="ew-judgment">{coaching.title}</strong>}<p>{lastBlack?coaching.detail:'첫 수를 둬 봐. 내 돌이 안전한지부터 차근차근 알려 줄게.'}</p>{coaching.facts.slice(0,1).map((f,i)=><div className="ew-fact" key={i}>· {f}</div>)}</div>
         <div className="ew-coachactions"><button type="button" className="ew-expandbtn" onClick={()=>setExtraCoaching(v=>!v)}>{extraCoaching?'설명 접기':'자세한 이유'} ▾</button><button type="button" className="ew-expandbtn" aria-pressed={overlayMode==='danger'||overlayMode==='liberty'} onClick={()=>{setOverlayMode(m=>m==='danger'?'none':'danger');window.scrollTo({top:0,behavior:'smooth'});}}>🔴 위험한 돌</button><button type="button" className="ew-expandbtn" aria-expanded={showHintPanel} onClick={()=>setShowHintPanel(v=>!v)}>💡 {showHintPanel?'힌트 접기':'힌트 받기'}</button></div>
         {whitePassed&&<p className="ew-whitepass"><strong>⚪ 백이 패스했어.</strong> 지금 둘 만한 곳이 없다고 판단했을 수 있어. 하지만 연습용 작은 모델이 너무 일찍 패스하는 경우도 있으니, 아직 둘 곳이 보이면 흑돌을 계속 둬도 돼. 양쪽이 연속으로 패스하면 대국이 끝나.</p>}
-        <div className="ew-parttitle"><span>KataGo 추천 자리</span><small>누르면 바둑판에 표시돼요</small></div>
-        <div className="ew-picks">{suggestions.length?suggestions.map((o,i)=><button type="button" key={`${o.x}-${o.y}`} className={`ew-pick ${highlight===`${o.x},${o.y}`?'ew-active':''}`} onClick={()=>{setHighlight(`${o.x},${o.y}`);setShowSuggestions(true);window.scrollTo({top:0,behavior:'smooth'});}}>{i+1}순위 {spot(o.x,o.y,boardSize)}</button>):<span className="ew-muted">{lastBlack?'이번 수 이전의 분석이 없어요. 다음 착수부터 비교해 볼게요.':'KataGo가 후보를 준비 중이에요.'}</span>}</div>
-        {suggestions.length>0&&<p className="ew-muted">{highlight&&suggestions.some(o=>`${o.x},${o.y}`===highlight)?moveExplanation(suggestions.find(o=>`${o.x},${o.y}`===highlight)!,lastBlack?.parent?.gameState.board??board):'현재 국면의 대안이에요. 추천 순위는 모델과 탐색량에 따라 달라져요.'}</p>}
+        <div className="ew-parttitle"><span>⚫ 이번 흑 차례 추천 자리</span><small>먼저 이유를 알아보자</small></div>
+        <div className="ew-picks">{suggestions.length?suggestions.map((o,i)=><button type="button" key={`${o.x}-${o.y}`} className={`ew-pick ${highlight===`${o.x},${o.y}`?'ew-active':''}`} onClick={()=>{setHighlight(`${o.x},${o.y}`);setShowSuggestions(true);}}>{i+1}순위 {spot(o.x,o.y,boardSize)} · 왜?</button>):<span className="ew-muted">{currentPlayer==='white'?'지금은 백 차례야. 백이 응수하면 새로운 흑 차례의 추천 자리를 보여 줄게.':'현재 판을 분석하고 있어. 흑돌을 놓을 곳을 고르기 전에 아래 질문부터 생각해 봐.'}</span>}</div>
+        {suggestions.length>0&&!selectedCandidate&&<p className="ew-muted">흑돌을 놓기 전의 <strong>현재 바둑판</strong>에서 추천한 후보야. 자리를 누르면 왜 좋은지 눈으로 확인할 수 있어.</p>}
+        {selectedCandidate&&<WhyThisMove key={`${currentNode.id}:${selectedCandidate.x},${selectedCandidate.y}`} board={board} previous={currentNode.parent?.gameState.board} candidate={selectedCandidate} rank={suggestions.indexOf(selectedCandidate)+1}/>}
+        <div className="ew-deeper" style={{marginTop:9,marginBottom:8}}><strong>🧠 어디에 둘지 모르겠다면?</strong><p>① 단수에 걸린 <strong>내 돌</strong>이 있는지 → ② 바로 잡을 수 있는 <strong>백돌</strong>이 있는지 → ③ 내 돌이 <strong>끊길 자리</strong>가 있는지 → ④ 모두 급하지 않다면 빈 공간의 <strong>귀·변</strong>부터 비교해 봐.</p><p>이 순서는 연습용 확인 순서야. 실제로 어느 수가 가장 좋은지는 전체 바둑판에 따라 달라져.</p></div>
         {extraCoaching&&<div className="ew-deeper">{coaching.facts.slice(1).map((f,i)=><p key={i}>· {f}</p>)}{weakest?`지금 흑돌 무리 중 빠져나갈 곳이 ${weakest.liberties.length}개뿐인 곳이 있어. 빨간 동그라미가 그 돌이고, 노란 자리가 빈 곳이야. 위험해지는 순간을 직접 확인해 보자.`:'현재는 활로가 두 개 이하인 흑돌 무리를 찾지 못했어. 계속 다른 흑돌과 연결되는지 살펴봐.'}</div>}
         {showHintPanel&&<div className="ew-hintbox"><div className="ew-hinthead"><strong>💡 놓기 전 힌트</strong><span>정답부터 보지 않고 단계별로!</span></div>
           {currentPlayer==='white'?<p>지금은 백 차례야. 백 응수 버튼을 누르면 다음 흑 차례에서 힌트를 받을 수 있어.</p>:finished?<p>이 판은 끝났어. 복기 탭에서 중요한 장면을 다시 풀어 봐.</p>:<>
