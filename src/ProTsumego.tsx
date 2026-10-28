@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {getLiberties} from './utils/gameLogic';
 import {parseSgf,type ParsedSgfNode} from './utils/sgf';
 import type {BoardState,Player} from './types';
@@ -115,12 +115,16 @@ function savedSolved():Record<string,boolean>{
    return Object.fromEntries(Object.entries(o).map(([k,v])=>[k,v===true]));
  }catch{return {};}
 }
+function lastTsumegoId():string{
+ try{const id=window.localStorage.getItem('baduk-pro:last-puzzle');if(id&&ALL_PROBLEMS.some(p=>p.id===id))return id;}catch{/* storage unavailable */}
+ return HARD_GGG_PROBLEMS[0]!.id;
+}
 export default function ProTsumego(){
- const [level,setLevel]=useState<'hard'|'intermediate'>('hard');
- const [id,setId]=useState(HARD_GGG_PROBLEMS[0]!.id);
+ const [id,setId]=useState<string>(lastTsumegoId);
+ const [level,setLevel]=useState<'hard'|'intermediate'>(()=>id.startsWith('intermediate')?'intermediate':'hard');
  const item=useMemo(()=>ALL_PROBLEMS.find(p=>p.id===id)??ALL_PROBLEMS[0]!,[id]);
  const initial=useMemo(()=>opening(item),[item]);
- const [replay,setReplay]=useState<Replay>(()=>opening(ALL_PROBLEMS[0]!)!.initial);
+ const [replay,setReplay]=useState<Replay>(()=>opening(ALL_PROBLEMS.find(p=>p.id===id)??ALL_PROBLEMS[0]!)!.initial);
  const [guess,setGuess]=useState<Coord|null>(null);
  const [hint,setHint]=useState(0);
  const [textFeedback,setTextFeedback]=useState('');
@@ -128,6 +132,7 @@ export default function ProTsumego(){
  const [attempts,setAttempts]=useState(0);
  const [solved,setSolved]=useState<Record<string,boolean>>(savedSolved);
  const [whole,setWhole]=useState(false);
+ useEffect(()=>{try{window.localStorage.setItem('baduk-pro:last-puzzle',id);}catch{/* no storage */}},[id]);
  const currentList=level==='hard'?HARD_GGG_PROBLEMS:INTERMEDIATE_GGG_PROBLEMS;
  const difficulty=level==='hard'?'고급':'중급';
  const dynamicCrop=useMemo(()=>crop(replay.board,initial?.initial.node??replay.node),[replay.board,initial]);
