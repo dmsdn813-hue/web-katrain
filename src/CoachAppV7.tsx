@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import AdvancedLessons from './AdvancedLessons';
 import ProTsumego from './ProTsumego';
 import WhyThisMove from './WhyThisMove';
+import {restoreCoachGame, startCoachAutosave} from './coachAutosave';
 import { useGameStore } from './store/gameStore';
 import { getLiberties, isValidMove } from './utils/gameLogic';
 import { generateSgfFromTree, parseSgf } from './utils/sgf';
@@ -371,6 +372,8 @@ function App() {
     try{const key='baduk-seven-lessons-'+new Date().toLocaleDateString('sv-SE');return JSON.parse(window.localStorage.getItem(key)||'[]') as number[];}catch{return [];}
   });
   const [note,setNote]=useState('');
+  const [autosaveState,setAutosaveState]=useState<'starting'|'saved'|'error'>('starting');
+  const [resumeMessage,setResumeMessage]=useState('');
   const [askText,setAskText]=useState('');
   const [askAnswer,setAskAnswer]=useState('');
   const [savedGames,setSavedGames]=useState<SavedGame[]>(()=>readSavedGames());
@@ -398,6 +401,17 @@ function App() {
     const updated=useGameStore.getState();
     if(updated.isAiPlaying && updated.aiColor)updated.toggleAi(updated.aiColor);
     if(!useGameStore.getState().isAnalysisMode) useGameStore.getState().toggleAnalysisMode();
+    const recovered=restoreCoachGame();
+    if(recovered.status==='restored'){
+      setResumeMessage('💚 '+recovered.message+' 이 대국부터 계속 둘 수 있어!');
+      const loaded=useGameStore.getState();
+      setBoardZoomed(window.innerWidth<640&&loaded.board.length===19);
+    }else if(recovered.status==='error'){
+      setResumeMessage('⚠️ '+recovered.message);
+    }
+  }
+  // Autosave is re-subscribed on StrictMode remounts, without reloading twice.
+  return startCoachAutosave((ok)=>setAutosaveState(ok?'saved':'error'));
   },[]);
 
   // 흑이 생각하는 동안 다음 착수를 미리 분석한다. AI의 모델은 실제 Web KaTrain 엔진.
@@ -672,6 +686,10 @@ function App() {
         <button type="button" className={activeTab==='review'?'ew-tab ew-tab-active':'ew-tab'} aria-current={activeTab==='review'?'page':undefined} onClick={()=>goTab('review')}>↶ 복기</button>
         <button type="button" className={activeTab==='learn'?'ew-tab ew-tab-active':'ew-tab'} aria-current={activeTab==='learn'?'page':undefined} onClick={()=>goTab('learn')}>📚 배우기</button>
       </nav>
+      {resumeMessage&&<div className="ew-notice" role="status" style={{marginTop:-6,marginBottom:13,background:'#e9f4e9',color:'#306545'}}>{resumeMessage}</div>}
+      <div role="status" style={{fontSize:11,lineHeight:1.5,color:autosaveState==='error'?'#a75040':'#6a8f74',textAlign:'right',marginTop:-11,marginBottom:9}}>
+        {autosaveState==='saved'?'✓ 이 기기에 자동 저장 중 · 다음 방문에 이어하기':autosaveState==='error'?'⚠️ 자동 저장 실패 · 복기 탭에서 SGF 파일로 백업해 줘':'저장 준비 중'}
+      </div>
 
       {activeTab==='play'&&<><div className="ew-preface">
         <div className="ew-preface-left">
