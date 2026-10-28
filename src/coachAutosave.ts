@@ -7,7 +7,8 @@ import {useGameStore} from './store/gameStore';
 
 const KEY='baduk-coach:current-game:v1';
 const MAX_SGF_LENGTH=1_000_000;
-export type GameAutosave={version:1;sgf:string;moveCount:number;boardSize:number;savedAt:string};
+export type GameAutosave={version:1;sgf:string;moveCount:number;boardSize:number;savedAt:string;path?:SavedMove[]};
+type SavedMove={x:number;y:number;player:'black'|'white'};
 export type AutosaveResult={status:'restored'|'empty'|'error';moveCount:number;message:string};
 
 function read():GameAutosave|null{
@@ -16,6 +17,7 @@ function read():GameAutosave|null{
  const value:unknown=JSON.parse(raw);
  if(!value||typeof value!=='object')throw Error('bad format');
  const s=value as Partial<GameAutosave>;
+ if(s.path && (!Array.isArray(s.path)||s.path.length>2000||s.path.some(move=>move===null||typeof move!=='object'||!Number.isInteger(move.x)||!Number.isInteger(move.y)||(move.player!=='black'&&move.player!=='white'))))throw Error('bad path');
  if(s.version!==1||typeof s.sgf!=='string'||s.sgf.length<10||s.sgf.length>MAX_SGF_LENGTH||
     typeof s.moveCount!=='number'||!Number.isSafeInteger(s.moveCount)||s.moveCount<0||s.moveCount>2000||
     typeof s.boardSize!=='number'||![9,13,19].includes(s.boardSize))throw Error('bad format');
@@ -34,7 +36,17 @@ export function restoreCoachGame():AutosaveResult{
    if(parsed.initialBoard.length!==saved.boardSize)throw Error('board mismatch');
    const s=useGameStore.getState();
    s.loadGame(parsed);
-   s.navigateToMove(saved.moveCount);
+   if(saved.path&&saved.path.length===saved.moveCount){
+     let cursor=useGameStore.getState().rootNode;
+     for(const m of saved.path){
+       const next=cursor.children.find(child=>child.move?.x===m.x&&child.move?.y===m.y&&child.move?.player===m.player);
+       if(!next)throw Error('missing branch');
+       cursor=next;
+     }
+     useGameStore.getState().jumpToNode(cursor);
+   }else{
+     s.navigateToMove(saved.moveCount);
+   }
    const loaded=useGameStore.getState();
    if(loaded.moveHistory.length!==saved.moveCount)throw Error('cursor mismatch');
    return {status:'restored',moveCount:loaded.moveHistory.length,message:'지난번 '+loaded.moveHistory.length+'수까지 두었던 '+saved.boardSize+'×'+saved.boardSize+' 대국을 불러왔어.'};
@@ -50,7 +62,7 @@ function exportSnapshot():GameAutosave{
    saveCommentsPlayer:{black:false,white:false},
  }});
  if(sgf.length>MAX_SGF_LENGTH)throw Error('too large');
- return {version:1,sgf,moveCount:s.moveHistory.length,boardSize:s.board.length,savedAt:new Date().toISOString()};
+ return {version:1,sgf,moveCount:s.moveHistory.length,boardSize:s.board.length,savedAt:new Date().toISOString(),path:s.moveHistory.map(m=>({x:m.x,y:m.y,player:m.player}))};
 }
 
 /** Changes are flushed synchronously, including when Safari closes the page. */
