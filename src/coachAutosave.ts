@@ -9,7 +9,14 @@ const KEY='baduk-coach:current-game:v1';
 const MAX_SGF_LENGTH=1_000_000;
 export type GameAutosave={version:1;sgf:string;moveCount:number;boardSize:number;savedAt:string;path?:SavedMove[]};
 type SavedMove={x:number;y:number;player:'black'|'white'};
-export type AutosaveResult={status:'restored'|'empty'|'error';moveCount:number;message:string};
+export type AutosaveResult={status:'restored'|'empty'|'error'|'blocked';moveCount:number;message:string};
+function preserveUnreadableSnapshot():boolean{
+ try{
+   const old=window.localStorage.getItem(KEY);
+   if(old){window.localStorage.setItem(KEY+':unreadable-backup',old);window.localStorage.removeItem(KEY);}
+   return true;
+ }catch{return false;}
+}
 
 function read():GameAutosave|null{
  const raw=window.localStorage.getItem(KEY);
@@ -29,7 +36,7 @@ export function restoreCoachGame():AutosaveResult{
  if(typeof window==='undefined')return {status:'empty',moveCount:0,message:''};
  let saved:GameAutosave|null;
  try{saved=read();}
- catch{return {status:'error',moveCount:0,message:'저장된 대국 정보에 접근하지 못했어. 이전 기록은 그대로 남겨 뒀어.'};}
+ catch{return preserveUnreadableSnapshot()?{status:'error',moveCount:0,message:'이전 대국을 읽지 못해 백업 사본을 남겼어. 새 대국은 다시 자동 저장돼.'}:{status:'blocked',moveCount:0,message:'저장소에 접근하지 못해 자동 저장을 중단했어. 복기 탭에서 SGF 파일로 직접 백업해 줘.'};}
  if(!saved)return {status:'empty',moveCount:0,message:''};
  try{
    const parsed=parseSgf(saved.sgf);
@@ -51,7 +58,7 @@ export function restoreCoachGame():AutosaveResult{
    if(loaded.moveHistory.length!==saved.moveCount)throw Error('cursor mismatch');
    return {status:'restored',moveCount:loaded.moveHistory.length,message:'지난번 '+loaded.moveHistory.length+'수까지 두었던 '+saved.boardSize+'×'+saved.boardSize+' 대국을 불러왔어.'};
  }catch{
-   return {status:'error',moveCount:0,message:'저장된 대국을 복구하지 못했어. 이전 자동 저장은 덮어쓰지 않았어.'};
+   return preserveUnreadableSnapshot()?{status:'error',moveCount:0,message:'이전 대국 복원에 실패해 백업 사본을 남겼어. 새 대국은 자동 저장돼.'}:{status:'blocked',moveCount:0,message:'자동 복구가 실패했고 저장 기록을 따로 보관할 수도 없어. 기록 보호를 위해 자동 저장을 중단했어.'};
  }
 }
 
