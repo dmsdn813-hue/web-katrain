@@ -391,7 +391,7 @@ function App() {
   const initialized=useRef(false);
 
   useEffect(()=>{
-    if(initialized.current)return;
+    if(!initialized.current){
     initialized.current=true;
     document.title='바둑 한 수 · KataGo 과외';
     document.documentElement.lang='ko';
