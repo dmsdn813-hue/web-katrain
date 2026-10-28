@@ -396,6 +396,7 @@ function App() {
   const [boardZoomed,setBoardZoomed]=useState(()=>typeof window!=='undefined'&&window.innerWidth<640&&useGameStore.getState().board.length===19);
   const requestKeys=useRef(new Set<string>());
   const initialized=useRef(false);
+  const autosaveBlocked=useRef(false);
 
   useEffect(()=>{
     if(!initialized.current){
@@ -413,11 +414,13 @@ function App() {
       setResumeMessage('💚 '+recovered.message+' 이 대국부터 계속 둘 수 있어!');
       const loaded=useGameStore.getState();
       setBoardZoomed(window.innerWidth<640&&loaded.board.length===19);
-    }else if(recovered.status==='error'){
+    }else if(recovered.status==='error'||recovered.status==='blocked'){
       setResumeMessage('⚠️ '+recovered.message);
+      if(recovered.status==='blocked')autosaveBlocked.current=true;
     }
   }
   // Autosave is re-subscribed on StrictMode remounts, without reloading twice.
+  if(autosaveBlocked.current){setAutosaveState('error');return;}
   return startCoachAutosave((ok)=>setAutosaveState(ok?'saved':'error'));
   },[]);
 
