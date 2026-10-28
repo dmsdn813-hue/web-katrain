@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getLiberties } from './utils/gameLogic';
 import type { BoardState, Player } from './types';
 
@@ -68,10 +68,14 @@ function Board({grid,target,selection,onPick}:{grid:BoardState;target:string;sel
     }))}
   </svg>;
 }
+function lastPracticeId():string{
+ try{const id=window.localStorage.getItem('baduk-hard:last-puzzle');if(id&&PUZZLES.some(p=>p.id===id))return id;}catch{/* no storage */}
+ return 'm1';
+}
 export default function AdvancedLessons(){
-  const [id,setId]=useState('m1');
+  const [id,setId]=useState<string>(lastPracticeId);
   const lesson=useMemo(()=>PUZZLES.find(p=>p.id===id)??PUZZLES[5]!,[id]);
-  const [grid,setGrid]=useState<BoardState>(()=>makeBoard(PUZZLES[5]!));
+  const [grid,setGrid]=useState<BoardState>(()=>makeBoard(PUZZLES.find(p=>p.id===id)??PUZZLES[5]!));
   const [step,setStep]=useState(0);
   const [selected,setSelected]=useState<P|null>(null);
   const [wrong,setWrong]=useState(0);
@@ -79,6 +83,7 @@ export default function AdvancedLessons(){
   const [message,setMessage]=useState('');
   const [solved,setSolved]=useState(false);
   const [progress,setProgress]=useState<Record<string,number>>(loadProgress);
+  useEffect(()=>{try{window.localStorage.setItem('baduk-hard:last-puzzle',id);}catch{/* no storage */}},[id]);
   const group=PUZZLES.filter(p=>p.level===lesson.level);
   const shownIndex=group.findIndex(p=>p.id===id);
   const count=PUZZLES.filter(p=>progress[p.id]).length;
