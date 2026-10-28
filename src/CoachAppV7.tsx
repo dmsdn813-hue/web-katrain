@@ -223,6 +223,13 @@ function explain(blackNode: GameNode | null) {
 
 // 설명과 복기는 서버에 보내지 않고 이 브라우저 안에서 처리한다.
 type CoachTab = 'play'|'review'|'learn';
+const COACH_PREFS_KEY='baduk-coach:ui-prefs:v1';
+function readCoachPrefs():{tab:CoachTab;level:18|12|7}{
+  try {
+    const data=JSON.parse(window.localStorage.getItem(COACH_PREFS_KEY)||'{}') as {tab?:unknown;level?:unknown};
+    return {tab:data.tab==='learn'?'learn':'play',level:data.level===18||data.level===7?data.level:12};
+  }catch{return {tab:'play',level:12};}
+}
 type Point = {x:number;y:number};
 type LessonKind = 'corner'|'liberty'|'capture';
 const LESSONS: {kind:LessonKind;title:string;question:string;stones:{x:number;y:number;player:'black'|'white'}[];answer:Point;explanation:string}[] = [
@@ -355,8 +362,8 @@ function App() {
   const settings=useGameStore(s=>s.settings);
   const notification=useGameStore(s=>s.notification);
   const isAnalysisMode=useGameStore(s=>s.isAnalysisMode);
-  const [level,setLevel]=useState<18|12|7>(12);
-  const [activeTab,setActiveTab]=useState<CoachTab>('play');
+  const [level,setLevel]=useState<18|12|7>(()=>readCoachPrefs().level);
+  const [activeTab,setActiveTab]=useState<CoachTab>(()=>readCoachPrefs().tab);
   const [reviewFrames,setReviewFrames]=useState<GameNode[]>([]);
   const [reviewIndex,setReviewIndex]=useState(0);
   const [reviewLabel,setReviewLabel]=useState('현재 대국');
@@ -413,6 +420,12 @@ function App() {
   // Autosave is re-subscribed on StrictMode remounts, without reloading twice.
   return startCoachAutosave((ok)=>setAutosaveState(ok?'saved':'error'));
   },[]);
+
+  // Resume the learning tab and selected opponent level across visits.
+  // The review tab opens the current saved game fresh on demand.
+  useEffect(()=>{
+    try{window.localStorage.setItem(COACH_PREFS_KEY,JSON.stringify({tab:activeTab,level}));}catch{/* private Safari */}
+  },[activeTab,level]);
 
   // 흑이 생각하는 동안 다음 착수를 미리 분석한다. AI의 모델은 실제 Web KaTrain 엔진.
   useEffect(()=>{
