@@ -88,6 +88,7 @@ export default function ExplainPractice(){
  const bestAfter=put(board,point(current.best.at),'black');
  const reply=chosen?.white||(!correct&&current.best.white?current.best.white:undefined);
  const afterWhite=reply&&selectedAfter?put(selectedAfter.board,point(reply),'white'):null;
+ const finishWhite=correct&&current.id==='s11'&&afterWhite?put(afterWhite.board,point('E5'),'black'):null;
  useEffect(()=>{try{localStorage.setItem('baduk-explain-practice:v1',JSON.stringify({id,finished}));}catch{/* storage unavailable */}},[id,finished]);
  function open(l:Lesson){
   setId(l.id);setSelected(null);setShowResponse(false);setHint(0);setAsked(false);
@@ -108,7 +109,7 @@ export default function ExplainPractice(){
   '.ex-card{border-radius:11px;padding:12px 13px;background:#f2f7f0;color:#3e5a46;line-height:1.7;font-size:13px;margin:10px 0}.ex-card strong{color:#2c6844}.ex-error{background:#fff5e6;color:#855e37}.ex-error strong{color:#87511d}',
   '.ex-actions{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.ex-btn{font-size:12px;font-weight:850;min-height:40px;padding:9px 11px;border:1px solid #d4e2d5;border-radius:9px;background:#fff;color:#416f4b}.ex-btn.main{color:#fff;background:#2b6647;border-color:#2b6647}',
   '.ex-subtitle{font-size:13px;font-weight:900;color:#3b6645;margin:14px 0 8px}.ex-note{font-size:11px;line-height:1.7;color:#879b8c;margin-top:9px}',
-  '.ex-comparison{display:grid;grid-template-columns:1fr 1fr;gap:6px}.ex-compare{min-width:0;border:1px solid #dce6db;border-radius:10px;padding:6px;background:#fbfcf8}.ex-compare .ex-board{margin:0;max-width:100%}.ex-compare span{font-size:11px;color:#55775d;font-weight:900;display:block;text-align:center;margin:5px 0}',
+  '.ex-comparison{display:grid;grid-template-columns:1fr;gap:10px}.ex-compare{min-width:0;border:1px solid #dce6db;border-radius:10px;padding:8px;background:#fbfcf8}.ex-compare .ex-board{margin:5px auto;max-width:min(100%,310px)}.ex-compare span{font-size:12px;color:#55775d;font-weight:900;display:block;text-align:center;margin:5px 0}',
   '.ex-more{border:1px solid #e4e9df;border-radius:10px;margin:9px 0;padding:10px 12px}.ex-more summary{cursor:pointer;font-weight:850;color:#3a6649;font-size:12px}'
  ].join('')}</style>
  <div className="ex-heading">🧠 왜 여기 두고, 저기는 안 될까?</div>
@@ -131,6 +132,7 @@ export default function ExplainPractice(){
   </div>
   {!correct&&<div className="ex-card"><strong>✅ 이 문제에서 찾으려던 자리는 {current.best.at}</strong><br/>{current.best.why}</div>}
   <div className="ex-subtitle">👀 내가 고른 수와 목표 수를 비교해 봐</div>
+  <p className="ex-note">두 바둑판의 돌 모양을 천천히 비교하고, 다른 후보도 눌러 왜 덜 적합한지 확인할 수 있어.</p>
   <div className="ex-comparison">
    <div className="ex-compare"><span>내 선택 · {chosen.at}</span>{selectedAfter&&<LearnBoard board={selectedAfter.board} mark={point(chosen.at)} show="picked"/>}</div>
    <div className="ex-compare"><span>이번 목표 · {current.best.at}</span>{bestAfter&&<LearnBoard board={bestAfter.board} mark={point(current.best.at)} show="correct"/>}</div>
@@ -139,6 +141,7 @@ export default function ExplainPractice(){
   {showResponse&&reply&&<div className="ex-card ex-error"><strong>⚪ 백 {reply}의 응수</strong><br/>{chosen.consequence??current.best.consequence??'백이 이렇게 둔다면 어떤 돌이 위험해지는지 확인해 봐.'}
    {afterWhite&&<LearnBoard board={afterWhite.board} mark={point(reply)} show="response"/>}
    {!afterWhite&&<p>이 변화는 규칙상 불가능하거나 다른 대응이 필요해. 확정적인 결과로 보지 마.</p>}
+   {finishWhite&&<div style={{marginTop:12,paddingTop:9,borderTop:'1px solid #eadbc7'}}><strong>⚫ 그다음 흑 E5!</strong><br/>E5로 백돌 두 개의 마지막 활로를 막으면 실제로 {finishWhite.captured}개를 잡아. 이것까지 생각해야 '두 수 앞 수읽기'야.<LearnBoard board={finishWhite.board} mark={point('E5')} show="correct"/></div>}
   </div>}
   <div className="ex-card"><strong>📌 기억할 원칙</strong><br/>{current.rule}<br/><strong style={{display:'block',marginTop:7}}>스스로 설명해 볼 질문</strong>{current.question}</div>
   {!asked&&<button type="button" className="ex-btn" onClick={()=>setAsked(true)}>내 말로 설명했어 ✓</button>}
