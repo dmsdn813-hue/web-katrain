@@ -22,7 +22,6 @@ const LESSONS:Lesson[]=[
 ];
 type P={x:number;y:number};
 const point=(v:string):P=>({x:v.charCodeAt(0)-65,y:Number(v.slice(1))-1});
-const named=(p:P)=>String.fromCharCode(65+p.x)+(p.y+1);
 function initialBoard(l:Lesson):BoardState{
  const b:BoardState=Array.from({length:l.size},()=>Array.from({length:l.size},()=>null));
  for(const [str,owner] of [[l.black,'black'],[l.white,'white']] as const)
