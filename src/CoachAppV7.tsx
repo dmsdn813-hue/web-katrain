@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import AdvancedLessons from './AdvancedLessons';
+import ExplainPractice from './ExplainPractice';
 import ProTsumego from './ProTsumego';
 import WhyThisMove from './WhyThisMove';
 import {restoreCoachGame, startCoachAutosave} from './coachAutosave';
@@ -231,6 +232,20 @@ function readCoachPrefs():{tab:CoachTab;level:18|12|7}{
   }catch{return {tab:'play',level:12};}
 }
 type Point = {x:number;y:number};
+type MoveIntention='save'|'attack'|'connect'|'expand';
+const INTENTIONS:{key:MoveIntention;label:string;prompt:string}[]=[
+ {key:'save',label:'🛡️ 내 돌 살리기',prompt:'내 돌 중 활로가 적은 무리가 있는지 찾아봐.'},
+ {key:'attack',label:'⚔️ 백돌 공격하기',prompt:'백돌 중 활로가 적은 무리가 있는지 찾아봐.'},
+ {key:'connect',label:'🔗 내 돌 연결하기',prompt:'내 흑돌이 떨어져 있다면 어디를 이어야 할지 찾아봐.'},
+ {key:'expand',label:'🏠 공간 넓히기',prompt:'급하게 지킬 돌이 없다면 귀·변에서 더 넓힐 수 있을지 살펴봐.'}
+];
+const PRACTICE_STATS_KEY='baduk-coach:independent-placements:v1';
+function readPracticeStats():{independent:number;withHelp:number}{
+ try {
+  const data=JSON.parse(window.localStorage.getItem(PRACTICE_STATS_KEY)||'{}') as {independent?:unknown;withHelp?:unknown};
+  return {independent:typeof data.independent==='number'&&data.independent>=0?data.independent:0,withHelp:typeof data.withHelp==='number'&&data.withHelp>=0?data.withHelp:0};
+ }catch{return {independent:0,withHelp:0};}
+}
 type LessonKind = 'corner'|'liberty'|'capture';
 const LESSONS: {kind:LessonKind;title:string;question:string;stones:{x:number;y:number;player:'black'|'white'}[];answer:Point;explanation:string}[] = [
   {kind:'corner',title:'귀 찾기',question:'5줄 연습판의 네 모서리 점 중 하나를 눌러 봐.',stones:[],answer:{x:0,y:0},explanation:'맞아! 네 모서리 근처를 귀라고 해. 처음엔 귀를 이용하면 적은 돌로 집을 만들기 쉬워.'},
@@ -386,6 +401,10 @@ function App() {
   const [savedGames,setSavedGames]=useState<SavedGame[]>(()=>readSavedGames());
   const recorded=useRef(new Set<string>());
   const [showSuggestions,setShowSuggestions]=useState(false);
+  const [showMoveAnswers,setShowMoveAnswers]=useState(false);
+  const [moveIntention,setMoveIntention]=useState<MoveIntention|null>(null);
+  const [lastIntention,setLastIntention]=useState<MoveIntention|null>(null);
+  const [practiceStats,setPracticeStats]=useState(readPracticeStats);
   const [highlight,setHighlight]=useState<string|null>(null);
   const [showReview,setShowReview]=useState(false);
   const [confirmNew,setConfirmNew]=useState(false);
@@ -519,7 +538,13 @@ function App() {
     const s=useGameStore.getState();
     if(activeTab!=='play'||finished || s.currentPlayer!=='black' || s.isAiThinking || isReviewing)return;
     if(!isValidMove(s.board,x,y,'black',s.currentNode.parent?.gameState.board)) {setNote('거기는 둘 수 없는 자리야. 다른 교차점을 눌러 줘.');return;}
+    const neededHelp=showMoveAnswers||hintStep>0||overlayMode!=='none'||showSuggestions;
+    const result=neededHelp?{...practiceStats,withHelp:practiceStats.withHelp+1}:{...practiceStats,independent:practiceStats.independent+1};
+    setPracticeStats(result);
+    try{window.localStorage.setItem(PRACTICE_STATS_KEY,JSON.stringify(result));}catch{/* Private Safari */}
+    setLastIntention(moveIntention);
     s.playMove(x,y);
+    setMoveIntention(null);setShowMoveAnswers(false);
     setShowSuggestions(false);setHighlight(null);setNote('');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
   }
   function newGame(){
@@ -527,7 +552,7 @@ function App() {
     s.startNewGame({boardSize:boardSize as 9|13|19,rules:'chinese',komi:6.5,handicap:0});
     if(!useGameStore.getState().isAnalysisMode)useGameStore.getState().toggleAnalysisMode();
     requestKeys.current.clear();
-    setNote('');setAskText('');setAskAnswer('');setShowSuggestions(false);setHighlight(null);setShowReview(false);setConfirmNew(false);setBusyMove(false);setShowBoardSizes(false);setActiveTab('play');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
+    setNote('');setAskText('');setAskAnswer('');setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setBusyMove(false);setShowBoardSizes(false);setActiveTab('play');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
   }
   function changeBoardSize(next: 9|13|19) {
     setShowBoardSizes(false);
@@ -540,12 +565,13 @@ function App() {
     if (!useGameStore.getState().isAnalysisMode)useGameStore.getState().toggleAnalysisMode();
     requestKeys.current.clear();
     setBoardZoomed(next===19);
-    setShowSuggestions(false);setHighlight(null);setShowReview(false);setConfirmNew(false);setAskAnswer('');setAskText('');setBusyMove(false);
+    setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setAskAnswer('');setAskText('');setBusyMove(false);
     setHintStep(0);setOverlayMode('none');setShowHintPanel(false);setActiveTab('play');setNote(`${next}×${next} 새 판이야. ${next===19?'교차점을 누르기 쉽게 판을 확대해 뒀어. 좌우로 밀어서 이동할 수 있어.':'흑돌부터 두면 돼.'}`);
   }
 
   function whiteReply(){
     if(finished || currentPlayer!=='white' || isAiThinking || busyMove)return;
+    setShowMoveAnswers(false);setShowSuggestions(false);setHighlight(null);setMoveIntention(null);
     setBusyMove(true);
     // 버튼 한 번만 눌러, 과외 내용과 대안부터 읽을 시간을 준다.
     useGameStore.getState().makeAiMove({force:true});
@@ -584,7 +610,7 @@ function App() {
       store.currentNode.parent?.move?.player==='black';
     store.undoMove();
     if (undoTwice) useGameStore.getState().undoMove();
-    setShowReview(false);setShowSuggestions(false);setHighlight(null);setNote('착수를 무르고 다시 선택할 수 있어요.');
+    setShowReview(false);setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setHighlight(null);setNote('착수를 무르고 다시 선택할 수 있어요.');
   }
   function endReview(){setActiveTab('play');setReviewPractice(false);setReviewGuess(null);setHighlight(null);}
   function openCurrentReview(atStart=false){
@@ -716,6 +742,13 @@ function App() {
       </div>
 
       </>}
+      {activeTab==='play'&&!finished&&currentPlayer==='black'&&<section className="ew-card" style={{marginTop:0,marginBottom:13,padding:'13px 14px',borderColor:'#cddfce'}} aria-label="스스로 한 수 고르기">
+        <div style={{fontSize:14,fontWeight:900,color:'#305b41'}}>🧠 먼저 스스로: 지금 무엇이 급할까?</div>
+        <p className="ew-muted" style={{margin:'6px 0 9px'}}>정답 자리를 보기 전에 이번 수의 목적을 골라 봐. 꼭 맞힐 필요는 없어. 고른 뒤 바둑판에 스스로 둬 보는 게 연습이야.</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:6}}>{INTENTIONS.map(o=><button key={o.key} type="button" aria-pressed={moveIntention===o.key} className="ew-pick" style={{minHeight:43,whiteSpace:'normal',padding:'7px 6px',background:moveIntention===o.key?'#2c6849':undefined,color:moveIntention===o.key?'white':undefined}} onClick={()=>setMoveIntention(o.key)}>{o.label}</button>)}</div>
+        {moveIntention?<p className="ew-paragraph" style={{margin:'8px 0 0',color:'#41654b'}}>→ {INTENTIONS.find(o=>o.key===moveIntention)?.prompt}</p>:<p className="ew-smallnote">모르겠으면 ‘위험한 내 돌 → 잡을 수 있는 백돌 → 연결 → 넓히기’ 순서로 살펴봐.</p>}
+        <div className="ew-smallnote" style={{marginTop:7}}>스스로 결정해서 둔 수 {practiceStats.independent}회 · 힌트·추천을 본 뒤 둔 수 {practiceStats.withHelp}회 (정답률이 아닌 연습 횟수)</div>
+      </section>}
       {activeTab==='review'&&<section className="ew-reviewintro"><div className="ew-reviewtitle">📖 기보만 집중해서 보는 공간</div><p>{reviewLabel} · {Math.max(0,reviewFrames.length-1)}수. 대국 화면과 분리되어 있어 실수로 착수하지 않아.</p><div className="ew-reviewcounter"><strong>{reviewIndex}수</strong> / {Math.max(0,reviewFrames.length-1)}수 <span>{reviewFrames[reviewIndex]?.move ? `· ${reviewFrames[reviewIndex]!.move!.player==='black'?'흑':'백'} ${spot(reviewFrames[reviewIndex]!.move!.x,reviewFrames[reviewIndex]!.move!.y,displaySize)}` : '· 시작 장면'}</span></div>
           <input type="range" className="ew-reviewscrub" aria-label="복기 수 선택" min={0} max={Math.max(0,reviewFrames.length-1)} value={reviewIndex} onChange={(e:{target:{value:string}})=>reviewJump(Number(e.target.value))}/>
           <div className="ew-reviewcontrols"><button type="button" onClick={()=>reviewJump(0)} disabled={reviewIndex===0}>처음</button><button type="button" onClick={()=>reviewStep(-1)} disabled={reviewIndex===0}>◀ 이전</button><button type="button" onClick={()=>reviewStep(1)} disabled={reviewIndex>=reviewFrames.length-1}>다음 ▶</button><button type="button" onClick={()=>reviewJump(reviewFrames.length-1)} disabled={reviewIndex>=reviewFrames.length-1}>마지막</button></div>
@@ -767,11 +800,13 @@ function App() {
         <div className="ew-lessonbox"><div className="ew-lessonlabel">▤ 선생님의 조언</div>{lastBlack&&<strong className="ew-judgment">{coaching.title}</strong>}<p>{lastBlack?coaching.detail:'첫 수를 둬 봐. 내 돌이 안전한지부터 차근차근 알려 줄게.'}</p>{coaching.facts.slice(0,1).map((f,i)=><div className="ew-fact" key={i}>· {f}</div>)}</div>
         <div className="ew-coachactions"><button type="button" className="ew-expandbtn" onClick={()=>setExtraCoaching(v=>!v)}>{extraCoaching?'설명 접기':'자세한 이유'} ▾</button><button type="button" className="ew-expandbtn" aria-pressed={overlayMode==='danger'||overlayMode==='liberty'} onClick={()=>{setOverlayMode(m=>m==='danger'?'none':'danger');window.scrollTo({top:0,behavior:'smooth'});}}>🔴 위험한 돌</button><button type="button" className="ew-expandbtn" aria-expanded={showHintPanel} onClick={()=>setShowHintPanel(v=>!v)}>💡 {showHintPanel?'힌트 접기':'힌트 받기'}</button></div>
         {whitePassed&&<p className="ew-whitepass"><strong>⚪ 백이 패스했어.</strong> 지금 둘 만한 곳이 없다고 판단했을 수 있어. 하지만 연습용 작은 모델이 너무 일찍 패스하는 경우도 있으니, 아직 둘 곳이 보이면 흑돌을 계속 둬도 돼. 양쪽이 연속으로 패스하면 대국이 끝나.</p>}
-        <div className="ew-parttitle"><span>⚫ 이번 흑 차례 추천 자리</span><small>먼저 이유를 알아보자</small></div>
-        <div className="ew-picks">{suggestions.length?suggestions.map((o,i)=><button type="button" key={`${o.x}-${o.y}`} className={`ew-pick ${highlight===`${o.x},${o.y}`?'ew-active':''}`} onClick={()=>{setHighlight(`${o.x},${o.y}`);setShowSuggestions(true);}}>{i+1}순위 {spot(o.x,o.y,boardSize)} · 왜?</button>):<span className="ew-muted">{currentPlayer==='white'?'지금은 백 차례야. 백이 응수하면 새로운 흑 차례의 추천 자리를 보여 줄게.':'현재 판을 분석하고 있어. 흑돌을 놓을 곳을 고르기 전에 아래 질문부터 생각해 봐.'}</span>}</div>
-        {suggestions.length>0&&!selectedCandidate&&<p className="ew-muted">흑돌을 놓기 전의 <strong>현재 바둑판</strong>에서 추천한 후보야. 자리를 누르면 왜 좋은지 눈으로 확인할 수 있어.</p>}
-        {selectedCandidate&&<WhyThisMove key={`${currentNode.id}:${selectedCandidate.x},${selectedCandidate.y}`} board={board} previous={currentNode.parent?.gameState.board} candidate={selectedCandidate} rank={suggestions.indexOf(selectedCandidate)+1}/>}
-        <div className="ew-deeper" style={{marginTop:9,marginBottom:8}}><strong>🧠 어디에 둘지 모르겠다면?</strong><p>① 단수에 걸린 <strong>내 돌</strong>이 있는지 → ② 바로 잡을 수 있는 <strong>백돌</strong>이 있는지 → ③ 내 돌이 <strong>끊길 자리</strong>가 있는지 → ④ 모두 급하지 않다면 빈 공간의 <strong>귀·변</strong>부터 비교해 봐.</p><p>이 순서는 연습용 확인 순서야. 실제로 어느 수가 가장 좋은지는 전체 바둑판에 따라 달라져.</p></div>
+        {lastIntention&&<p className="ew-lessonbox" style={{fontSize:12,lineHeight:1.65}}>📝 아까 이 수를 둘 때 <strong>‘{INTENTIONS.find(o=>o.key===lastIntention)?.label}’</strong>를 생각했지? 실제로 무엇이 달라졌는지 위 설명과 비교해 봐.</p>}
+        <div className="ew-parttitle"><span>🔎 추천수는 필요할 때만 확인</span><small>먼저 내 수를 생각해 봐</small></div>
+        <button type="button" className="ew-go-reviewbtn" style={{background:showMoveAnswers?'#eaf3ec':'#f8faf7',color:'#356548'}} aria-expanded={showMoveAnswers} onClick={()=>{setShowMoveAnswers(v=>!v);setShowSuggestions(false);setHighlight(null);}}>{showMoveAnswers?'▴ 추천수 가리기':'🔓 고민한 뒤 KataGo 추천수 확인하기'}</button>
+        {showMoveAnswers&&<div className="ew-picks">{suggestions.length?suggestions.map((o,i)=><button type="button" key={`${o.x}-${o.y}`} className={`ew-pick ${highlight===`${o.x},${o.y}`?'ew-active':''}`} onClick={()=>{setHighlight(`${o.x},${o.y}`);setShowSuggestions(true);}}>{i+1}순위 {spot(o.x,o.y,boardSize)} · 왜?</button>):<span className="ew-muted">{currentPlayer==='white'?'지금은 백 차례야. 백이 응수하면 새로운 흑 차례의 추천 자리를 보여 줄게.':'현재 판을 분석하고 있어. 흑돌을 놓을 곳을 고르기 전에 아래 질문부터 생각해 봐.'}</span>}</div>}
+        {showMoveAnswers&&suggestions.length>0&&!selectedCandidate&&<p className="ew-muted">흑돌을 놓기 전의 <strong>현재 바둑판</strong>에서 추천한 후보야. 자리를 누르면 왜 좋은지 눈으로 확인할 수 있어.</p>}
+        {showMoveAnswers&&selectedCandidate&&<WhyThisMove key={`${currentNode.id}:${selectedCandidate.x},${selectedCandidate.y}`} board={board} previous={currentNode.parent?.gameState.board} candidate={selectedCandidate} rank={suggestions.indexOf(selectedCandidate)+1}/>}
+        <div className="ew-deeper" style={{marginTop:9,marginBottom:8}}><strong>⚠️ 주의: 추천수를 보기 전에는 바둑판에 정답 표시가 나오지 않아.</strong><br/><strong>🧠 어디에 둘지 모르겠다면?</strong><p>① 단수에 걸린 <strong>내 돌</strong>이 있는지 → ② 바로 잡을 수 있는 <strong>백돌</strong>이 있는지 → ③ 내 돌이 <strong>끊길 자리</strong>가 있는지 → ④ 모두 급하지 않다면 빈 공간의 <strong>귀·변</strong>부터 비교해 봐.</p><p>이 순서는 연습용 확인 순서야. 실제로 어느 수가 가장 좋은지는 전체 바둑판에 따라 달라져.</p></div>
         {extraCoaching&&<div className="ew-deeper">{coaching.facts.slice(1).map((f,i)=><p key={i}>· {f}</p>)}{weakest?`지금 흑돌 무리 중 빠져나갈 곳이 ${weakest.liberties.length}개뿐인 곳이 있어. 빨간 동그라미가 그 돌이고, 노란 자리가 빈 곳이야. 위험해지는 순간을 직접 확인해 보자.`:'현재는 활로가 두 개 이하인 흑돌 무리를 찾지 못했어. 계속 다른 흑돌과 연결되는지 살펴봐.'}</div>}
         {showHintPanel&&<div className="ew-hintbox"><div className="ew-hinthead"><strong>💡 놓기 전 힌트</strong><span>정답부터 보지 않고 단계별로!</span></div>
           {currentPlayer==='white'?<p>지금은 백 차례야. 백 응수 버튼을 누르면 다음 흑 차례에서 힌트를 받을 수 있어.</p>:finished?<p>이 판은 끝났어. 복기 탭에서 중요한 장면을 다시 풀어 봐.</p>:<>
@@ -840,7 +875,12 @@ function App() {
         </section>
       </>}
       {activeTab==='learn'&&<>
-        <ProTsumego/>
+        <ExplainPractice/>
+        <details className="ew-card" style={{marginTop:11,marginBottom:13}}>
+          <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🔥 프로 기사 사활 36제 · 원본 정답 기보 (펼치기)</summary>
+          <p className="ew-smallnote">고급 사활은 정답 변화도가 길고 원문 해설이 짧을 수 있어. 먼저 위의 ‘왜 이 수?’ 판단 과외를 추천해.</p>
+          <ProTsumego/>
+        </details>
         <details className="ew-card" style={{marginTop:11,marginBottom:11}}>
           <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🧠 이전 연습 16문제 · 가벼운 복습 (펼치기)</summary>
           <div style={{paddingTop:12}}><AdvancedLessons/></div>
