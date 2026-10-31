@@ -48,7 +48,6 @@ function explain(before:BoardState,m:Move,after:BoardState){
  const edge=Math.min(m.x,m.y,n-1-m.x,n-1-m.y);
  return {title:edge<=2?'귀·변에서 자리 잡기':'중앙에 두기',detail:edge<=2?'귀·변은 비교적 적은 돌로 집을 만들기 쉬워. 다만 지금 당장 내 집이 되는 건 아니야.':'중앙에 둔 돌은 여러 방향으로 영향을 줄 수 있지만, 그것만으로 안전한 돌이나 집이 되는 건 아니야.',question:'지금 긴급하게 지키거나 공격할 다른 돌은 없을까?'};
 }
-function boardComponent():never{throw Error('not used');}
 function GoBoard({board,onMove,last,mark,zoom}:{board:BoardState;onMove?:(x:number,y:number)=>void;last?:P|null;mark?:P|null;zoom?:boolean}){
  const n=board.length,o=23,w=328,step=w/(n-1),r=Math.min(18,step*.45);
  return <div className={'c10-boardwrap'+(zoom?' c10-zoom':'')}><svg className="c10-board" viewBox="0 0 374 383" role="group" aria-label={n+'줄 바둑판. 빈 교차점을 터치해 흑돌을 놓아.'}>
