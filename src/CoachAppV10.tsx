@@ -4,12 +4,15 @@ import {restoreCoachGame,startCoachAutosave} from './coachAutosave';
 import {getLiberties,isValidMove,applyCapturesInPlace} from './utils/gameLogic';
 import {generateSgfFromTree,parseSgf} from './utils/sgf';
 import ProTsumego from './ProTsumego';
+import {KATAGO_SMALL_MODEL_PATH} from './engine/katago/modelDefaults';
+import {publicUrl} from './utils/publicUrl';
 import type {BoardState,GameNode,Move,Player} from './types';
 
 type Tab='play'|'learn'|'review';
 type P={x:number;y:number};
 type Saved={id:string;date:string;result:string;moves:number;sgf:string};
 const COLS='ABCDEFGHJKLMNOPQRST';
+const BASIC_MODEL_URL=publicUrl(KATAGO_SMALL_MODEL_PATH);
 const label=(p:P|null,n:number):string=>p&&p.x>=0&&p.y>=0?(COLS[p.x]??'?')+(n-p.y):'패스';
 const legal=(p:P|null|undefined):p is P=>!!p&&p.x>=0&&p.y>=0;
 function nodePath(node:GameNode):GameNode[]{const a:GameNode[]=[];for(let n:GameNode|null=node;n;n=n.parent)a.unshift(n);return a;}
@@ -124,7 +127,7 @@ export default function CoachAppV10(){
  const [sheet,setSheet]=useState<'hint'|'lesson'|'best'|null>(null),[hint,setHint]=useState(0),[showBest,setShowBest]=useState(false);
  const [zoom,setZoom]=useState(false),[status,setStatus]=useState<'pending'|'saved'|'error'>('pending');
  const [message,setMessage]=useState(''),[notice,setNotice]=useState(''),[archive,setArchive]=useState(readArchive),[archiveId,setArchiveId]=useState<string|null>(null),[reviewAt,setReviewAt]=useState(0);
- const initialized=useRef(false),blocked=useRef(false),reported=useRef(new Set<string>()),pendingAnalysis=useRef(new Set<string>());
+ const initialized=useRef(false),blocked=useRef(false),reported=useRef(new Set<string>()),pendingAnalysis=useRef(new Set<string>()),recoveredModel=useRef<string|null>(null);
  const n=board.length,num=history.length;
  const finished=Boolean(node.endState)||(num>=2&&history[num-1]?.x<0&&history[num-2]?.x<0);
  const line=useMemo(()=>nodePath(node),[node,treeVersion]);
@@ -148,6 +151,7 @@ export default function CoachAppV10(){
    s.updateSettings({appLocale:'ko',aiStrategy:'rank',aiRankKyu:level,analysisExperience:'coach',katagoVisits:160,katagoMaxTimeMs:6500});
    if(!s.isAnalysisMode)s.toggleAnalysisMode();
    const saved=restoreCoachGame();
+   if(saved.status==='empty'&&useGameStore.getState().moveHistory.length===0&&useGameStore.getState().board.length!==9)useGameStore.getState().startNewGame({boardSize:9,rules:'chinese',komi:6.5,handicap:0});
    if(saved.status!=='empty')setMessage(saved.message);
    if(saved.status==='blocked')blocked.current=true;
    setZoom(useGameStore.getState().board.length===19);
@@ -156,6 +160,14 @@ export default function CoachAppV10(){
   return startCoachAutosave(ok=>setStatus(ok?'saved':'error'));
  },[]);
  useEffect(()=>{try{localStorage.setItem('baduk-coach:ui-prefs:v1',JSON.stringify({tab,level}));}catch{/* private browsing */}},[tab,level]);
+ useEffect(()=>{
+  if(modelStatus!=='error'||settings.katagoModelUrl===BASIC_MODEL_URL)return;
+  const old=settings.katagoModelUrl;
+  if(recoveredModel.current===old)return;
+  recoveredModel.current=old;
+  useGameStore.getState().updateSettings({katagoModelUrl:BASIC_MODEL_URL});
+  setNotice('강화 AI 모델 실행에 실패해서 기본 모델로 자동 복구했어.');
+ },[modelStatus,settings.katagoModelUrl]);
  useEffect(()=>{
   if(tab!=='play'||player!=='black'||finished||!analysisEnabled||node.analysis?.moves?.length)return;
   const key=node.id+settings.katagoModelUrl;if(pendingAnalysis.current.has(key))return;
