@@ -41,6 +41,26 @@ function put(board:BoardState,color:Player,at:Point|null):Frame|null{
  const g=getLiberties(b,at.x,at.y);
  return {board:b,color,move:at,captured:captured.length,liberties:g.liberties,groupSize:g.group.length,atari:atariCount(b,color==='black'?'white':'black')};
 }
+function recordedReply(sgf:string,guess:Point):Frame|null{
+ const parsed=parseSgf(sgf);
+ if(!parsed.tree)return null;
+ const root=parsed.initialBoard;
+ const branch=parsed.tree.children.find(node=>{
+  const m=move(node);
+  return m?.at?.x===guess.x&&m.at.y===guess.y;
+ });
+ if(!branch)return null;
+ const choice=move(branch);
+ if(!choice)return null;
+ const placed=put(root,choice.color,choice.at);
+ if(!placed)return null;
+ const opponent=branch.children.find(n=>{const m=move(n);return m&&m.color!==choice.color;});
+ if(!opponent)return null;
+ const response=move(opponent);
+ if(!response)return null;
+ return put(placed.board,response.color,response.at);
+}
+
 function answerLine(sgf:string):{first:BoardState;frames:Frame[]}|null{
  const parsed=parseSgf(sgf);
  if(!parsed.tree)return null;
@@ -94,6 +114,7 @@ function describe(frame:Frame,n:number):string[]{
 export default function SgfLessonWalkthrough({sgf,guess,visible}:{sgf:string;guess:Point|null;visible:boolean}){
  const [step,setStep]=useState(0);
  const solution=useMemo(()=>{try{return answerLine(sgf);}catch{return null;}},[sgf]);
+ const authoredResponse=useMemo(()=>{try{return guess?recordedReply(sgf,guess):null;}catch{return null;}},[sgf,guess]);
  if(!visible)return null;
  if(!solution||solution.frames.length===0)return <p>원본 정답 변화도를 분석할 수 없어. 다른 문제를 골라 봐.</p>;
  const n=solution.first.length;
@@ -116,7 +137,13 @@ export default function SgfLessonWalkthrough({sgf,guess,visible}:{sgf:string;gue
   {guess&&<div className="sgf-compare"><strong>① 내가 선택한 첫 수: {coord(guess,n)}</strong>
    {attempted?<><p>내가 두려던 곳에 실제로 두면 이렇게 변해. 이 한 수가 곧바로 돌을 몇 개 잡는지, 내 돌이 단수인지 확인해 보자.</p><StepBoard board={attempted.board} marker={guess}/>
     <p>{describe(attempted,n).slice(1,3).join(' ')}</p></>:<p>이 자리는 이미 돌이 있거나 규칙상 둘 수 없는 자리야.</p>}
-   <p>{matches?'이 첫 수는 원본 정답 변화도와 같아! 다음 백의 응수를 보면서 끝까지 읽어 보자.':'다른 수가 반드시 나쁘다는 뜻은 아니야. 원본 풀이에는 이 첫 수 이후의 정답 경로가 없어, 아래 변화도와 비교해야 해.'}</p></div>}
+   <p>{matches?'이 첫 수는 원본 정답 변화도와 같아! 다음 백의 응수를 보면서 끝까지 읽어 보자.':authoredResponse?'아래는 원본 기보에서 이 선택에 대응한 상대의 실제 기록이야. 정답 경로와 다른 변화를 비교해 보자.':'이 수는 정답 경로와 달라. 다만 원본에 상대 응수가 기록되어 있지 않아, 불리하다고 확정할 수는 없어.'}</p>
+   {!matches&&authoredResponse&&<div className="sgf-compare" style={{background:'#fff6e9'}}><strong>⚪ 원본에 기록된 상대의 응수 · {coord(authoredResponse.move,n)}</strong>
+    <p>이 자리에 상대가 실제로 두었다고 원본 변화도에 기록돼 있어. <strong>어떤 내 돌이 위험해지는지</strong> 확인하고 정답 경로와 비교해 봐.</p>
+    <StepBoard board={authoredResponse.board} marker={authoredResponse.move}/>
+    {describe(authoredResponse,n).slice(1,3).map((line,i)=><p key={i}>{line}</p>)}
+   </div>}
+  </div>}
   <div className="sgf-compare"><strong>② 원본 정답 첫 수: {coord(first.move,n)}</strong><p>이 수가 효과를 발휘하는 건 백의 다음 응수 때문일 수도 있어. 정답 숫자만 보지 말고 이후 판을 비교해 봐.</p><StepBoard board={first.board} marker={first.move}/></div>
   <div className="sgf-compare"><strong>③ 백의 대응까지 한 수씩 보기 · {at+1}/{frames.length}</strong>
    <StepBoard board={frame.board} marker={frame.move}/>
