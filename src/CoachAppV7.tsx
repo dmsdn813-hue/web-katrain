@@ -918,11 +918,11 @@ function App() {
         </section>
       </>}
       {activeTab==='learn'&&<>
-        <ExplainPractice/>
+        <ProTsumego/>
         <details className="ew-card" style={{marginTop:11,marginBottom:13}}>
-          <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🔥 프로 기사 사활 36제 · 원본 정답 기보 (펼치기)</summary>
-          <p className="ew-smallnote">고급 사활은 정답 변화도가 길고 원문 해설이 짧을 수 있어. 먼저 위의 ‘왜 이 수?’ 판단 과외를 추천해.</p>
-          <ProTsumego/>
+          <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🌿 쉬운 전술 복습 11제 (필요할 때 펼치기)</summary>
+          <p className="ew-smallnote">중급 난이도가 부담스러운 날만 활용하는 기초 복습이야. 기본 학습은 위의 중급 실전 문제로 진행해.</p>
+          <ExplainPractice/>
         </details>
         <details className="ew-card" style={{marginTop:11,marginBottom:11}}>
           <summary style={{fontWeight:900,color:'#416c50',cursor:'pointer'}}>🧠 이전 연습 16문제 · 가벼운 복습 (펼치기)</summary>
