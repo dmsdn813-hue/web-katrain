@@ -372,7 +372,6 @@ function App() {
   const isAiThinking=useGameStore(s=>s.isAiThinking);
   const engineStatus=useGameStore(s=>s.engineStatus);
   const engineError=useGameStore(s=>s.engineError);
-  const engineModelName=useGameStore(s=>s.engineModelName);
   const treeVersion=useGameStore(s=>s.treeVersion);
   const settings=useGameStore(s=>s.settings);
   const notification=useGameStore(s=>s.notification);
