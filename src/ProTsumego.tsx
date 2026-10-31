@@ -3,6 +3,7 @@ import {getLiberties} from './utils/gameLogic';
 import {parseSgf,type ParsedSgfNode} from './utils/sgf';
 import type {BoardState,Player} from './types';
 import {HARD_GGG_PROBLEMS} from './gggHardProblems';
+import SgfLessonWalkthrough from './SgfLessonWalkthrough';
 import {INTERMEDIATE_GGG_PROBLEMS} from './gggIntermediateProblems';
 
 type Puzzle={id:string;title:string;difficulty:string;sgf:string;source:string};
@@ -115,12 +116,8 @@ function savedSolved():Record<string,boolean>{
    return Object.fromEntries(Object.entries(o).map(([k,v])=>[k,v===true]));
  }catch{return {};}
 }
-function lastTsumegoId():string{
- try{const id=window.localStorage.getItem('baduk-pro:last-puzzle');if(id&&ALL_PROBLEMS.some(p=>p.id===id))return id;}catch{/* storage unavailable */}
- return HARD_GGG_PROBLEMS[0]!.id;
-}
 export default function ProTsumego(){
- const [id,setId]=useState<string>(lastTsumegoId);
+ const [id,setId]=useState<string>(()=>{try{const id=localStorage.getItem('baduk-pro:v10:selected');if(id&&ALL_PROBLEMS.some(x=>x.id===id))return id;}catch{/* private browsing */}return INTERMEDIATE_GGG_PROBLEMS[0]!.id;});
  const [level,setLevel]=useState<'hard'|'intermediate'>(()=>id.startsWith('intermediate')?'intermediate':'hard');
  const item=useMemo(()=>ALL_PROBLEMS.find(p=>p.id===id)??ALL_PROBLEMS[0]!,[id]);
  const initial=useMemo(()=>opening(item),[item]);
@@ -132,7 +129,9 @@ export default function ProTsumego(){
  const [attempts,setAttempts]=useState(0);
  const [solved,setSolved]=useState<Record<string,boolean>>(savedSolved);
  const [whole,setWhole]=useState(false);
- useEffect(()=>{try{window.localStorage.setItem('baduk-pro:last-puzzle',id);}catch{/* no storage */}},[id]);
+ const [teacherOpen,setTeacherOpen]=useState(false);
+ const [lastGuess,setLastGuess]=useState<Coord|null>(null);
+ useEffect(()=>{try{window.localStorage.setItem('baduk-pro:last-puzzle',id);window.localStorage.setItem('baduk-pro:v10:selected',id);}catch{/* no storage */}},[id]);
  const currentList=level==='hard'?HARD_GGG_PROBLEMS:INTERMEDIATE_GGG_PROBLEMS;
  const difficulty=level==='hard'?'고급':'중급';
  const dynamicCrop=useMemo(()=>crop(replay.board,initial?.initial.node??replay.node),[replay.board,initial]);
@@ -144,18 +143,18 @@ export default function ProTsumego(){
  function open(newItem:Puzzle,newLevel:'hard'|'intermediate'=level){
    const next=opening(newItem);
    if(!next)return;
-   setLevel(newLevel);setId(newItem.id);setReplay(next.initial);setGuess(null);setHint(0);setTextFeedback('');setVerdict(null);setAttempts(0);setWhole(false);
+   setLevel(newLevel);setId(newItem.id);setReplay(next.initial);setGuess(null);setHint(0);setTextFeedback('');setVerdict(null);setAttempts(0);setWhole(false);setLastGuess(null);setTeacherOpen(false);
  }
  function submit(p:Coord){
    if(verdict||!initial)return;
-   setGuess(p);
+   setGuess(p);setLastGuess(p);
    const line=branches.find(n=>{
      const at=moveFromNode(n,human);
      return at!==undefined&&at!==null&&at.x===p.x&&at.y===p.y;
    });
    if(!line){
      setAttempts(n=>n+1);
-     setTextFeedback('원본 정답 기보에서 이 수는 다루지 않았어. 틀렸다고 확정할 수는 없지만, 다른 수를 찾아봐. 정답은 아직 공개하지 않을게.');
+     setTextFeedback('이 수는 원본 기보에 없어 좋은 수인지 단정할 수 없어. 아래에서 정답 변화도의 첫 수와 비교해 보자.');setTeacherOpen(true);
      return;
    }
    const changed=simulate(replay.board,human,p,replay.previous);
@@ -179,7 +178,7 @@ export default function ProTsumego(){
        }
      } else setReplay({board:changed,node:line,moves:played,previous:replay.board});
      setVerdict('alternate');
-     setTextFeedback('원본 풀이에서는 이 변화로 성공하지 못해. 상대가 어떻게 응수하는지 확인하고 다시 도전해 봐.');
+     setTextFeedback('원본 기보에서는 이 변화가 정답으로 표시되지 않았어. 백의 실제 응수와 정답 경로를 비교해 봐.');setTeacherOpen(true);
      return;
    }
    if(defense){
@@ -201,7 +200,7 @@ export default function ProTsumego(){
  function finish(valid:boolean,stepCount:number){
    if(!valid)return;
    setVerdict('solved');
-   setTextFeedback('정답 변화도를 완성했어! 실제 프로 기사가 작성한 풀이에서 정답으로 표시된 수야. 총 '+stepCount+'수의 변화도를 확인했어.');
+   setTextFeedback('원본 정답 변화도를 완성했어! 아래에서 백의 응수와 후속 수를 다시 확인해 보자. 총 '+stepCount+'수를 진행했어.');setTeacherOpen(true);
    if(!solved[id]){const next={...solved,[id]:true};setSolved(next);try{localStorage.setItem('baduk-pro-tsumego-v1',JSON.stringify(next));}catch{/* Private Safari */}}
  }
  function next(){
@@ -221,19 +220,21 @@ export default function ProTsumego(){
    '.pro-original{border-top:1px solid #edf0e8;margin-top:14px;padding-top:10px;color:#849587;font-size:11px;line-height:1.65}.pro-original a{color:#356747;text-decoration:underline}',
    '.pro-original summary{font-size:12px;color:#6d816f;font-weight:800;cursor:pointer}.pro-hint{background:#fff7e7;padding:10px 11px;border-radius:9px;margin:10px 0;color:#6a643d;font-size:12px;line-height:1.7}'
  ].join('')}</style>
- <div className="pro-title">🔥 프로 기사 실전 사활 36제</div>
- <p className="pro-intro">아까 문제들은 너무 단순했지. 이건 프로 기사가 만든 <strong>19×19 실제 사활 문제</strong>야. 변화를 끝까지 읽어야 정답이고, 노란 정답 표시도 없어. 기본은 고급부터 시작해!</p>
+ <div className="pro-title">🧠 중급 실전 사활 · 해설 과외</div>
+ <p className="pro-intro">중급 실전 문제로 시작해. 답을 외우기보다 <strong>왜 이 자리가 좋은지, 백이 다음에 어디에 두는지</strong> 한 수씩 살펴보자. 어려워도 풀이를 따라가면 돼.</p>
  <div className="pro-levels" role="group" aria-label="실전 사활 난이도">
    <button className="pro-level" type="button" aria-pressed={level==='intermediate'} onClick={()=>open(INTERMEDIATE_GGG_PROBLEMS[0]!, 'intermediate')}>⚔️ 중급 · 18제</button>
    <button className="pro-level" type="button" aria-pressed={level==='hard'} onClick={()=>open(HARD_GGG_PROBLEMS[0]!, 'hard')}>🔥 고급 · 18제</button>
  </div>
  <div className="pro-progress"><strong>{difficulty} · {currentList.findIndex(x=>x.id===id)+1}/18번</strong><span>{currentList.filter(x=>solved[x.id]).length}/18제 해결</span></div>
  <div className="pro-problems">{currentList.map((p,i)=><button key={p.id} type="button" aria-label={difficulty+' '+(i+1)+'번'} aria-pressed={id===p.id} className="pro-number" onClick={()=>open(p)}>{solved[p.id]?'✓':i+1}</button>)}</div>
- <p className="pro-prompt">⚫ {human==='black'?'흑':'백'} 차례 · 가장 좋은 첫 수부터 찾아 봐. 상대의 다음 응수까지 생각해!</p>
+ <p className="pro-prompt">{human==='black'?'⚫ 흑':'⚪ 백'} 차례 · 다음 상대 수까지 생각하며 직접 바둑판에 둬 봐.</p>
  <div className="pro-turn">현재 {human==='black'?'흑':'백'} 차례 · {replay.moves.length}수 진행 · {attempts}번 시도</div>
  <PuzzleBoard grid={replay.board} cropped={viewport} choice={guess} onPoint={submit} editable={!verdict}/>
  {initial&&dynamicCrop.size<initial.n&&<div style={{fontSize:11,color:'#829486',textAlign:'center'}}>19줄 실전 바둑판의 해당 부분을 확대했어. <button type="button" className="pro-btn" style={{minHeight:32,padding:'5px 8px',marginLeft:4}} onClick={()=>setWhole(v=>!v)}>{whole?'문제 부분 확대':'19줄 전체 보기'}</button></div>}
  {textFeedback&&<div className={'pro-notice'+(verdict==='solved'?' pro-result':verdict==='alternate'?' pro-error':'')} role="status">{textFeedback}</div>}
+ <div className="pro-controls"><button type="button" className="pro-btn main" onClick={()=>setTeacherOpen(v=>!v)}>{teacherOpen?'📖 풀이 해설 접기':'📖 왜 정답인지 · 다른 수는 어떤지 보기'}</button></div>
+ <SgfLessonWalkthrough key={id} sgf={item.sgf} guess={lastGuess} visible={teacherOpen}/>
  {hint>0&&verdict===null&&<div className="pro-hint">💡 {hint===1?'먼저 내 돌과 상대 돌의 활로를 세어 봐. 이 수를 둔 뒤 상대가 어디에 응수할지도 상상해 봐.':hint===2?'이 문제는 여러 수를 연결해서 생각해야 해. 먼저 돌이 끊기거나 잡힐 위험이 있는 곳을 찾아 봐.':'원본 정답 변화도의 다음 수: '+(goodReplies.map(p=>pointName(p,initial?.n??19)).join(' · ')||'표시되지 않음') }</div>}
  <div className="pro-controls">
    {verdict===null&&<button type="button" className="pro-btn" onClick={()=>setHint(h=>Math.min(3,h+1))}>💡 {hint===0?'힌트 보기':hint===2?'정답 첫 수 보기':'다음 힌트'}</button>}
