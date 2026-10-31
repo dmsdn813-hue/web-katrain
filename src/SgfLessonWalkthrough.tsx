@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {getLiberties,applyCapturesInPlace,isValidMove} from './utils/gameLogic';
 import {parseSgf,type ParsedSgfNode} from './utils/sgf';
 import type {BoardState,Player} from './types';
@@ -77,16 +77,16 @@ function answerLine(sgf:string):{first:BoardState;frames:Frame[]}|null{
  }
  return {first,frames};
 }
-function StepBoard({board,marker}:{board:BoardState;marker:Point|null}){
+function StepBoard({board,marker,viewport}:{board:BoardState;marker:Point|null;viewport?:{x0:number;y0:number;span:number}}){
  const n=board.length;
  const all:Point[]=[];
  for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(board[y]?.[x])all.push({x,y});
  if(marker)all.push(marker);
  const left=all.length?Math.min(...all.map(p=>p.x)):0,right=all.length?Math.max(...all.map(p=>p.x)):n-1;
  const top=all.length?Math.min(...all.map(p=>p.y)):0,bottom=all.length?Math.max(...all.map(p=>p.y)):n-1;
- const span=Math.max(9,Math.min(n,Math.max(right-left+3,bottom-top+3)));
- const x0=Math.max(0,Math.min(n-span,Math.round((left+right-span+1)/2)));
- const y0=Math.max(0,Math.min(n-span,Math.round((top+bottom-span+1)/2)));
+ const span=viewport?.span??Math.max(9,Math.min(n,Math.max(right-left+3,bottom-top+3)));
+ const x0=viewport?.x0??Math.max(0,Math.min(n-span,Math.round((left+right-span+1)/2)));
+ const y0=viewport?.y0??Math.max(0,Math.min(n-span,Math.round((top+bottom-span+1)/2)));
  const gap=310/(span-1),r=Math.min(16,gap*.45),o=27;
  return <svg className="sgf-teachboard" viewBox="0 0 368 372" role="img" aria-label="이 수 이후 바둑판">
   <rect width="368" height="372" rx="10" fill="#e6c38f"/>
@@ -113,43 +113,82 @@ function describe(frame:Frame,n:number):string[]{
 }
 export default function SgfLessonWalkthrough({sgf,guess,visible}:{sgf:string;guess:Point|null;visible:boolean}){
  const [step,setStep]=useState(0);
+ const [view,setView]=useState<'initial'|'mine'|'reply'|'answer'>('answer');
  const solution=useMemo(()=>{try{return answerLine(sgf);}catch{return null;}},[sgf]);
  const authoredResponse=useMemo(()=>{try{return guess?recordedReply(sgf,guess):null;}catch{return null;}},[sgf,guess]);
+ useEffect(()=>{setStep(0);setView(guess?'mine':'answer');},[guess,sgf]);
+ const viewport=useMemo(()=>{
+  if(!solution)return undefined;
+  const boards=[solution.first,...solution.frames.map(f=>f.board)];
+  const seen:Point[]=[];
+  for(const b of boards)for(let y=0;y<b.length;y++)for(let x=0;x<b.length;x++)if(b[y]?.[x])seen.push({x,y});
+  if(guess)seen.push(guess);
+  if(!seen.length)return undefined;
+  const n=solution.first.length,left=Math.min(...seen.map(p=>p.x)),right=Math.max(...seen.map(p=>p.x)),top=Math.min(...seen.map(p=>p.y)),bottom=Math.max(...seen.map(p=>p.y));
+  const span=Math.min(n,Math.max(9,right-left+3,bottom-top+3));
+  return {x0:Math.max(0,Math.min(n-span,Math.round((left+right-span+1)/2))),y0:Math.max(0,Math.min(n-span,Math.round((top+bottom-span+1)/2))),span};
+ },[solution,guess]);
  if(!visible)return null;
  if(!solution||solution.frames.length===0)return <p>원본 정답 변화도를 분석할 수 없어. 다른 문제를 골라 봐.</p>;
- const n=solution.first.length;
- const frames=solution.frames,at=Math.min(step,frames.length-1),frame=frames[at]!;
- const first=frames[0]!;
- const attempted=guess?put(solution.first,first.color,guess):null;
- const matches=guess&&first.move&&guess.x===first.move.x&&guess.y===first.move.y;
- return <section className="sgf-teacher" aria-label="정답과 오답의 이유를 비교하는 상세 해설">
+ const n=solution.first.length,frames=solution.frames;
+ const at=Math.min(step,frames.length-1),frame=frames[at]!;
+ const first=frames[0]!,attempted=guess?put(solution.first,first.color,guess):null;
+ const matches=Boolean(guess&&first.move&&guess.x===first.move.x&&guess.y===first.move.y);
+ const currentBoard=view==='initial'?solution.first:view==='mine'?(attempted?.board??solution.first):view==='reply'?(authoredResponse?.board??solution.first):frame.board;
+ const marker=view==='initial'?null:view==='mine'?guess:view==='reply'?(authoredResponse?.move??null):frame.move;
+ const viewTitle=view==='initial'?'① 착수 전 바둑판':view==='mine'?('② 내가 둔 '+coord(guess,n)):view==='reply'?('③ 상대의 응수 '+coord(authoredResponse?.move??null,n)):('✅ 정답 수순 '+(at+1)+'/'+frames.length);
+ const firstEffect=describe(first,n).slice(1,3).join(' ');
+ const mineEffect=attempted?describe(attempted,n).slice(1,3).join(' '):'이 자리는 현재 규칙상 둘 수 없는 자리야.';
+ const whiteEffect=authoredResponse?describe(authoredResponse,n).slice(1,3).join(' '):'원본에 이 선택의 상대 응수가 기록되어 있지 않아.';
+ return <section className="sgf-teacher" aria-label="정답과 다른 수를 한 판에서 비교하는 상세 해설">
   <style>{[
-   '.sgf-teacher{margin:12px 0;padding:12px 10px;border:1px solid #b9d4bf;background:#f0f7f0;border-radius:13px;color:#335c42}',
-   '.sgf-teacher h3{margin:0 0 9px;font-size:14px;color:#2e6341}',
-   '.sgf-teacher p{font-size:12px;line-height:1.75;color:#4a6d55;margin:8px 0}',
-   '.sgf-teacher .sgf-compare{background:#fff;border:1px solid #e2ede1;border-radius:11px;margin:10px 0;padding:10px}',
-   '.sgf-teacher strong{font-size:12px;color:#2e6242}',
-   '.sgf-teachboard{width:min(100%,336px);display:block;height:auto;margin:9px auto}',
+   '.sgf-teacher{margin:10px 0;padding:12px;border:1px solid #bfd8c4;background:#f3f9f2;border-radius:13px;color:#335c42}',
+   '.sgf-teacher h3{margin:0 0 7px;font-size:15px;color:#2e6341}',
+   '.sgf-teacher p{font-size:12px;line-height:1.75;color:#4b6d54;margin:7px 0}',
+   '.sgf-teacher .sgf-stage{font-weight:900;color:#2f6748;margin:10px 0 4px;font-size:13px}',
+   '.sgf-teacher .sgf-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:11px 0}',
+   '.sgf-teacher .sgf-views button{background:white;border:1px solid #cadfcc;color:#39684a;border-radius:9px;min-height:40px;font-size:12px;font-weight:850;padding:6px 8px}',
+   '.sgf-teacher .sgf-views button[aria-pressed=true]{background:#28664b;color:white;border-color:#28664b}',
+   '.sgf-teacher .sgf-views button:disabled{opacity:.4}',
+   '.sgf-teachboard{width:min(100%,345px);display:block;height:auto;margin:8px auto;border-radius:10px}',
+   '.sgf-teacher .sgf-point{background:#fff;border:1px solid #dde8db;border-radius:10px;padding:10px 11px}',
    '.sgf-stepbuttons{display:flex;gap:7px;margin:10px 0}.sgf-stepbuttons button{flex:1;border:1px solid #c7ddcd;background:#fff;border-radius:9px;min-height:42px;font-weight:850;color:#306849;font-size:12px}.sgf-stepbuttons button:disabled{opacity:.4}',
-   '.sgf-teacher .sgf-important{background:#e6f1e6;border-radius:9px;padding:9px}'
+   '.sgf-teacher .sgf-important{background:#e5f0e5;border-radius:9px;padding:9px}'
   ].join('')}</style>
-  <h3>👩‍🏫 왜 정답이고, 왜 다른 수는 아쉬울까?</h3>
-  {guess&&<div className="sgf-compare"><strong>① 내가 선택한 첫 수: {coord(guess,n)}</strong>
-   {attempted?<><p>내가 두려던 곳에 실제로 두면 이렇게 변해. 이 한 수가 곧바로 돌을 몇 개 잡는지, 내 돌이 단수인지 확인해 보자.</p><StepBoard board={attempted.board} marker={guess}/>
-    <p>{describe(attempted,n).slice(1,3).join(' ')}</p></>:<p>이 자리는 이미 돌이 있거나 규칙상 둘 수 없는 자리야.</p>}
-   <p>{matches?'이 첫 수는 원본 정답 변화도와 같아! 다음 백의 응수를 보면서 끝까지 읽어 보자.':authoredResponse?'아래는 원본 기보에서 이 선택에 대응한 상대의 실제 기록이야. 정답 경로와 다른 변화를 비교해 보자.':'이 수는 정답 경로와 달라. 다만 원본에 상대 응수가 기록되어 있지 않아, 불리하다고 확정할 수는 없어.'}</p>
-   {!matches&&authoredResponse&&<div className="sgf-compare" style={{background:'#fff6e9'}}><strong>⚪ 원본에 기록된 상대의 응수 · {coord(authoredResponse.move,n)}</strong>
-    <p>이 자리에 상대가 실제로 두었다고 원본 변화도에 기록돼 있어. <strong>어떤 내 돌이 위험해지는지</strong> 확인하고 정답 경로와 비교해 봐.</p>
-    <StepBoard board={authoredResponse.board} marker={authoredResponse.move}/>
-    {describe(authoredResponse,n).slice(1,3).map((line,i)=><p key={i}>{line}</p>)}
-   </div>}
-  </div>}
-  <div className="sgf-compare"><strong>② 원본 정답 첫 수: {coord(first.move,n)}</strong><p>이 수가 효과를 발휘하는 건 백의 다음 응수 때문일 수도 있어. 정답 숫자만 보지 말고 이후 판을 비교해 봐.</p><StepBoard board={first.board} marker={first.move}/></div>
-  <div className="sgf-compare"><strong>③ 백의 대응까지 한 수씩 보기 · {at+1}/{frames.length}</strong>
-   <StepBoard board={frame.board} marker={frame.move}/>
-   {describe(frame,n).map((sentence,i)=><p key={i}>{sentence}</p>)}
-   <div className="sgf-stepbuttons"><button type="button" disabled={at===0} onClick={()=>setStep(v=>Math.max(0,v-1))}>◀ 이전 수</button><button type="button" disabled={at>=frames.length-1} onClick={()=>setStep(v=>Math.min(frames.length-1,v+1))}>다음 수 ▶</button></div>
+  <h3>👩‍🏫 왜 이 수가 정답이고, 다른 수는 어떨까?</h3>
+  <p>같은 판을 바꿔 가며 비교해 보자. <strong>착수 전 → 내 선택 → 백의 응수 → 정답 수순</strong>을 눌러 확인할 수 있어. 바둑판이 여러 개 쌓이지 않게 한 장만 보여줘.</p>
+  <div className="sgf-views" role="group" aria-label="한 바둑판으로 변화 비교">
+    <button type="button" aria-pressed={view==='initial'} onClick={()=>setView('initial')}>처음 상태</button>
+    <button type="button" disabled={!guess} aria-pressed={view==='mine'} onClick={()=>setView('mine')}>내가 둔 수</button>
+    <button type="button" disabled={!authoredResponse} aria-pressed={view==='reply'} onClick={()=>setView('reply')}>백의 응수</button>
+    <button type="button" aria-pressed={view==='answer'} onClick={()=>setView('answer')}>정답 변화도</button>
   </div>
-  <p className="sgf-important"><strong>핵심:</strong> 정답 한 수보다 ‘그 수 → 백의 응수 → 흑의 후속 수’를 연결해서 읽는 게 중요해. 원본 SGF에 기록된 변화도로 확인한 내용이고, 기록되지 않은 수까지 오답이라고 확정하지 않아.</p>
+  <div className="sgf-stage">{viewTitle}</div>
+  <StepBoard board={currentBoard} marker={marker} viewport={viewport}/>
+  <div className="sgf-point" role="status">
+    {view==='initial'&&<>
+      <strong>먼저 어디가 위험한지 찾아보자</strong>
+      <p>연결된 돌무리는 하나로 보고 활로를 세어 봐. 지금 잡는 것만 생각하지 말고 상대가 다음에 어디에 둘지도 상상해 보자.</p>
+    </>}
+    {view==='mine'&&<>
+      <strong>내가 둔 수의 실제 효과</strong><p>{mineEffect}</p>
+      <p>{matches?'이 자리는 원본의 정답 첫 수와 같아. 하지만 이 한 수만으로 정답인 건 아니야. 백의 다음 수와 흑의 후속 수까지 확인해야 해.':authoredResponse?'이 자리에서는 원본 기보에 백의 대응이 기록되어 있어. ‘백의 응수’를 눌러 어디를 공격하는지 확인해 봐.':'이 수에 대한 상대의 응수가 원본에 기록되어 있지 않아. 틀렸다고 확정하지 않고 정답 수순과 비교해 보자.'}</p>
+    </>}
+    {view==='reply'&&<>
+      <strong>상대는 이렇게 대응할 수 있어</strong><p>기보에 기록된 상대가 {coord(authoredResponse?.move??null,n)}에 둔 변화야. {whiteEffect}</p>
+      <p>처음 판과 비교해서 누가 먼저 중요한 빈점을 차지했는지, 어느 돌무리의 활로가 줄었는지 확인해 봐. 이 기록만으로 모든 다른 수가 패배한다고 단정할 수는 없어.</p>
+    </>}
+    {view==='answer'&&<>
+      <strong>{at===0?'정답의 첫 번째 선택':'왜 이다음 수가 필요한지 알아보자'}</strong>
+      <p>{at===0?firstEffect:describe(frame,n).slice(1,3).join(' ')}</p>
+      <p>{frame.color==='black'?'흑의 목적을 확인했으면 다음에 백이 어떻게 대응하는지 보자.':'백이 이렇게 응수하면 흑은 무엇을 해야 할까? 다음 흑수를 보기 전에 직접 생각해 보자.'}</p>
+      {at===frames.length-1&&<p>이 장면까지가 원본에 <strong>정답으로 기록된 수순</strong>이야. 포획·활로는 실제 판에서 계산했고, 사활 전체의 전략적 이유를 모두 증명하는 것은 아니야.</p>}
+    </>}
+  </div>
+  {view==='answer'&&<div className="sgf-stepbuttons">
+    <button type="button" disabled={at===0} onClick={()=>setStep(i=>Math.max(0,i-1))}>◀ 이전 수</button>
+    <button type="button" disabled={at>=frames.length-1} onClick={()=>setStep(i=>Math.min(frames.length-1,i+1))}>다음 수 ▶</button>
+  </div>}
+  <p className="sgf-important"><strong>기억할 원칙:</strong> 한 수가 아니라, 그 수를 둔 뒤 백의 응수와 흑의 후속 수까지 연결해서 읽기. 다른 수에 대한 기록이 없으면 오답이라고 단정하지 않기.</p>
  </section>;
 }
