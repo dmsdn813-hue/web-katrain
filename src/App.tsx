@@ -1,1 +1,1 @@
-export { default } from './CoachAppV7';
+export { default } from './CoachAppV10';
