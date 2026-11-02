@@ -4,6 +4,7 @@ import ExplainPractice from './ExplainPractice';
 import ProTsumego from './ProTsumego';
 import WhyThisMove from './WhyThisMove';
 import {restoreCoachGame, startCoachAutosave} from './coachAutosave';
+import {estimatedBlackWinChance,findEmergencyThreat} from './coachSignals';
 import { useGameStore } from './store/gameStore';
 import { getLiberties, isValidMove } from './utils/gameLogic';
 import { generateSgfFromTree, parseSgf } from './utils/sgf';
@@ -240,6 +241,10 @@ const INTENTIONS:{key:MoveIntention;label:string;prompt:string}[]=[
  {key:'expand',label:'🏠 공간 넓히기',prompt:'급하게 지킬 돌이 없다면 귀·변에서 더 넓힐 수 있을지 살펴봐.'}
 ];
 const PRACTICE_STATS_KEY='baduk-coach:independent-placements:v1';
+const URGENT_ALERTS_KEY='baduk-coach:emergency-alerts:v1';
+function readUrgentPreference():boolean{
+ try{return window.localStorage.getItem(URGENT_ALERTS_KEY)!=='off';}catch{return true;}
+}
 function readPracticeStats():{independent:number;withHelp:number}{
  try {
   const data=JSON.parse(window.localStorage.getItem(PRACTICE_STATS_KEY)||'{}') as {independent?:unknown;withHelp?:unknown};
@@ -402,6 +407,8 @@ function App() {
   const [showSuggestions,setShowSuggestions]=useState(false);
   const [showMoveAnswers,setShowMoveAnswers]=useState(false);
   const [coachPanel,setCoachPanel]=useState<'closed'|'explain'|'hint'|'recommend'|'terms'>('closed');
+  const [autoEmergency,setAutoEmergency]=useState(readUrgentPreference);
+  const [emergencyReveal,setEmergencyReveal]=useState(false);
   const [moveIntention,setMoveIntention]=useState<MoveIntention|null>(null);
   const [lastIntention,setLastIntention]=useState<MoveIntention|null>(null);
   const [practiceStats,setPracticeStats]=useState(readPracticeStats);
@@ -486,6 +493,11 @@ function App() {
   const displayHitRadius=Math.max(8,displayGridGap*0.49);
   const displayStarPoints=displaySize===19?[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]]:displaySize===13?[[3,3],[3,9],[6,6],[9,3],[9,9]]:[[2,2],[2,6],[4,4],[6,2],[6,6]];
   const weakest=useMemo(()=>weakBlackGroup(displayBoard),[displayBoard]);
+  const winChance=useMemo(()=>estimatedBlackWinChance(currentNode.analysis),[currentNode,treeVersion]);
+  const emergency=useMemo(()=>findEmergencyThreat(board),[board]);
+  const showEmergency=autoEmergency&&activeTab==='play'&&currentPlayer==='black'&&!finished&&!isAiThinking&&emergency!==null;
+  const emergencyStoneKeys=useMemo(()=>new Set(emergency?.stones.map(p=>p.x+','+p.y)??[]),[emergency]);
+  const emergencyLibertyKeys=useMemo(()=>new Set(emergency?.liberties.map(p=>p.x+','+p.y)??[]),[emergency]);
   const markers=useMemo(()=>weakest?{danger:new Set(weakest.stones.map(p=>`${p.x},${p.y}`)),liberties:new Set(weakest.liberties.map(p=>`${p.x},${p.y}`))}:{danger:new Set<string>(),liberties:new Set<string>()},[weakest]);
   const currentCandidates=suggestions;
   const reviewHighlights=useMemo(()=>reviewMoments(reviewFrames),[reviewFrames]);
@@ -538,13 +550,13 @@ function App() {
     const s=useGameStore.getState();
     if(activeTab!=='play'||finished || s.currentPlayer!=='black' || s.isAiThinking || isReviewing)return;
     if(!isValidMove(s.board,x,y,'black',s.currentNode.parent?.gameState.board)) {setNote('거기는 둘 수 없는 자리야. 다른 교차점을 눌러 줘.');return;}
-    const neededHelp=showMoveAnswers||hintStep>0||overlayMode!=='none'||showSuggestions;
+    const neededHelp=showMoveAnswers||hintStep>0||overlayMode!=='none'||showSuggestions||emergencyReveal;
     const result=neededHelp?{...practiceStats,withHelp:practiceStats.withHelp+1}:{...practiceStats,independent:practiceStats.independent+1};
     setPracticeStats(result);
     try{window.localStorage.setItem(PRACTICE_STATS_KEY,JSON.stringify(result));}catch{/* Private Safari */}
     setLastIntention(moveIntention);
     s.playMove(x,y);
-    setCoachPanel('closed');setMoveIntention(null);setShowMoveAnswers(false);
+    setCoachPanel('closed');setEmergencyReveal(false);setMoveIntention(null);setShowMoveAnswers(false);
     setShowSuggestions(false);setHighlight(null);setNote('');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
   }
   function newGame(){
@@ -552,7 +564,7 @@ function App() {
     s.startNewGame({boardSize:boardSize as 9|13|19,rules:'chinese',komi:6.5,handicap:0});
     if(!useGameStore.getState().isAnalysisMode)useGameStore.getState().toggleAnalysisMode();
     requestKeys.current.clear();
-    setCoachPanel('closed');setNote('');setAskText('');setAskAnswer('');setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setBusyMove(false);setShowBoardSizes(false);setActiveTab('play');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
+    setCoachPanel('closed');setEmergencyReveal(false);setNote('');setAskText('');setAskAnswer('');setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setBusyMove(false);setShowBoardSizes(false);setActiveTab('play');setHintStep(0);setOverlayMode('none');setShowHintPanel(false);
   }
   function changeBoardSize(next: 9|13|19) {
     setShowBoardSizes(false);
@@ -565,13 +577,13 @@ function App() {
     if (!useGameStore.getState().isAnalysisMode)useGameStore.getState().toggleAnalysisMode();
     requestKeys.current.clear();
     setBoardZoomed(next===19);
-    setCoachPanel('closed');setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setAskAnswer('');setAskText('');setBusyMove(false);
+    setCoachPanel('closed');setEmergencyReveal(false);setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setLastIntention(null);setHighlight(null);setShowReview(false);setConfirmNew(false);setAskAnswer('');setAskText('');setBusyMove(false);
     setHintStep(0);setOverlayMode('none');setShowHintPanel(false);setActiveTab('play');setNote(`${next}×${next} 새 판이야. ${next===19?'교차점을 누르기 쉽게 판을 확대해 뒀어. 좌우로 밀어서 이동할 수 있어.':'흑돌부터 두면 돼.'}`);
   }
 
   function whiteReply(){
     if(finished || currentPlayer!=='white' || isAiThinking || busyMove)return;
-    setCoachPanel('closed');setShowMoveAnswers(false);setShowSuggestions(false);setHighlight(null);setMoveIntention(null);
+    setCoachPanel('closed');setEmergencyReveal(false);setShowMoveAnswers(false);setShowSuggestions(false);setHighlight(null);setMoveIntention(null);
     setBusyMove(true);
     // 버튼 한 번만 눌러, 과외 내용과 대안부터 읽을 시간을 준다.
     useGameStore.getState().makeAiMove({force:true});
@@ -610,7 +622,7 @@ function App() {
       store.currentNode.parent?.move?.player==='black';
     store.undoMove();
     if (undoTwice) useGameStore.getState().undoMove();
-    setCoachPanel('closed');setShowReview(false);setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setHighlight(null);setNote('착수를 무르고 다시 선택할 수 있어요.');
+    setCoachPanel('closed');setEmergencyReveal(false);setShowReview(false);setShowSuggestions(false);setShowMoveAnswers(false);setMoveIntention(null);setHighlight(null);setNote('착수를 무르고 다시 선택할 수 있어요.');
   }
   function endReview(){setActiveTab('play');setReviewPractice(false);setReviewGuess(null);setHighlight(null);}
   function openCurrentReview(atStart=false){
@@ -700,6 +712,13 @@ function App() {
     <style>{`
       .ew-app{--ink:#232c28;--green:#275a44;--softgreen:#e9f4e9;--muted:#84918a;--line:#e6e5df;--paper:#f8f6f1;min-height:100vh;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;font-size:14px;line-height:1.5;padding:18px 19px 48px;font-weight:400}
       .ew-app *{box-sizing:border-box}.ew-app button,.ew-app input,.ew-app select{font-family:inherit}.ew-wrap{max-width:420px;margin:0 auto;min-width:0}
+      .ew-winstrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-1px 0 9px;padding:6px 10px;border:1px solid #dbe8dc;border-radius:10px;background:#f0f7ef;font-size:11px;color:#477357}
+      .ew-winstrip strong{font-size:12px;color:#2c6849;white-space:nowrap}.ew-wintrack{height:6px;width:70px;flex-shrink:0;background:#e4e5e6;border:1px solid #d2ddd2;overflow:hidden;border-radius:99px}
+      .ew-winfill{display:block;height:100%;background:#428b64;transition:width .25s ease}.ew-winstrip small{color:#718978;font-size:10px;flex:1;min-width:100px}
+      .ew-emergency-alert{border:1px solid #eed1b7;background:#fff6e8;color:#805338;border-radius:11px;padding:8px 9px;margin:8px 0 7px;font-size:11px;line-height:1.5}
+      .ew-emergency-alert>strong{font-size:12px;color:#954d32}.ew-emergency-alert p{margin:3px 0 6px}.ew-emergency-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+      .ew-emergency-actions button{background:#fff;border:1px solid #e6cfba;color:#8c623f;border-radius:8px;font-size:11px;font-weight:850;padding:6px 9px;min-height:33px}
+      .ew-alertpref{display:flex;align-items:center;gap:6px;color:#799081;font-size:11px;margin-top:7px;cursor:pointer}.ew-alertpref input{accent-color:#387557;inline-size:15px;block-size:15px}
       .ew-compactcoach{background:#fff;border:1px solid #d7e5d8;border-radius:16px;padding:11px 12px;margin:8px 0 10px;box-shadow:0 2px 9px #26462b0a}
       .ew-compact-heading{display:flex;gap:8px;align-items:center;justify-content:space-between;color:#2c5d41;font-size:13px}
       .ew-compact-heading span{font-size:11px;border-radius:99px;background:#eaf4e9;padding:4px 8px;color:#64836b;white-space:nowrap}
@@ -768,6 +787,11 @@ function App() {
           <div className="ew-reviewcontrols"><button type="button" onClick={()=>reviewJump(0)} disabled={reviewIndex===0}>처음</button><button type="button" onClick={()=>reviewStep(-1)} disabled={reviewIndex===0}>◀ 이전</button><button type="button" onClick={()=>reviewStep(1)} disabled={reviewIndex>=reviewFrames.length-1}>다음 ▶</button><button type="button" onClick={()=>reviewJump(reviewFrames.length-1)} disabled={reviewIndex>=reviewFrames.length-1}>마지막</button></div>
         </section>}
       {activeTab!=='learn'&&<><div className="ew-scoreline"><div className="ew-prisoner"><span><span className="ew-mini-black" style={{width:14,height:14,verticalAlign:'-2px'}}/> 포획 {frame?.gameState.capturedWhite??capturedWhite}</span><span>·</span><span><span className="ew-mini-white" style={{width:14,height:14,verticalAlign:'-2px'}}/> 포획 {frame?.gameState.capturedBlack??capturedBlack}</span></div><span className="ew-scoreline-right">{displayHistory.length}수</span></div>
+      {activeTab==='play'&&<div className="ew-winstrip" role="status" aria-label={winChance===null?'흑 승률 분석 중':`KataGo가 추정한 흑의 승률 약 ${winChance}%`}>
+        <strong>⚫ AI 예상 승률 {winChance===null?'계산 중…':`약 ${winChance}%`}</strong>
+        {winChance!==null&&<span className="ew-wintrack" role="meter" aria-label="흑의 AI 예상 승률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={winChance}><span className="ew-winfill" style={{width:winChance+'%'}}/></span>}
+        <small>{winChance===null?'현재 국면을 분석하고 있어.': 'KataGo 추정치 · 실제 승리 확률을 보장하지 않아.'}</small>
+      </div>
 
       <div className="ew-board-area">
         <div className="ew-boardwrap" aria-label={`${displaySize}×${displaySize} 바둑판`}>
@@ -784,6 +808,8 @@ function App() {
               const canReviewGuess=viewingReview&&reviewPractice&&!stone&&frame?.gameState.currentPlayer==='black'&&displayHistory.length<reviewFrames.length-1&&isValidMove(displayBoard,x,y,'black',frame.parent?.gameState.board);
               const canPlay=activeTab==='play'&&currentPlayer==='black'&&!finished&&!isAiThinking&&!showReview;
               return <g key={`${x}-${y}`}>
+                {showEmergency&&emergencyStoneKeys.has(x+','+y)&&<circle cx={cx} cy={cy} r={displayStoneRadius+4.4} fill="#efae83" fillOpacity=".28" stroke="#d55a38" strokeWidth={displaySize===19?2:3}/>}
+                {showEmergency&&emergencyReveal&&emergencyLibertyKeys.has(x+','+y)&&<circle cx={cx} cy={cy} r={displayStoneRadius*.78} fill="#ffe47a" fillOpacity=".82" stroke="#cc911a" strokeWidth="2"/>}
                 {marked>=0 && <circle cx={cx} cy={cy} r={displayStoneRadius+1} fill="none" stroke={selected?'#d87948':'#2c8757'} strokeWidth={displaySize===19?1.7:3} strokeDasharray={selected?'0':'4 3'}/>}
                 {activeTab==='play'&&(overlayMode==='danger'||overlayMode==='liberty')&&markers.danger.has(`${x},${y}`)&&<circle cx={cx} cy={cy} r={displayStoneRadius+3.5} fill="#f2b8a8" fillOpacity=".46" stroke="#c94a35" strokeWidth="2.5"/>}
                 {activeTab==='play'&&(overlayMode==='danger'||overlayMode==='liberty')&&markers.liberties.has(`${x},${y}`)&&<circle cx={cx} cy={cy} r={displayStoneRadius*.88} fill="#f7e287" stroke="#c08d22" strokeWidth="2"/>}
@@ -800,6 +826,11 @@ function App() {
       </div>
 
       </>}
+      {activeTab==='play'&&showEmergency&&emergency&&<div className="ew-emergency-alert" role="status">
+        <strong>{emergency.severity==='atari'?'🚨 단수! 바로 위험한 흑돌이 있어':'⚠️ 백돌과 맞닿은 흑돌이 위험해질 수 있어'}</strong>
+        <p>{emergency.severity==='atari'? `흑돌 ${emergency.stones.length}개가 연결된 무리의 활로가 단 한 곳이야. 다음 백 차례에 잡힐 수 있으니 먼저 살펴봐.`:`흑돌 ${emergency.stones.length}개 무리의 활로가 두 곳이고 백돌이 바로 옆에 있어. 먼저 안전한지 생각해 봐.`}</p>
+        <div className="ew-emergency-actions"><button type="button" aria-pressed={emergencyReveal} onClick={()=>setEmergencyReveal(v=>!v)}>{emergencyReveal?'🟡 활로 표시 감추기':'🟡 이 돌의 활로 보기'}</button><button type="button" onClick={()=>setCoachPanel('hint')}>💡 이유만 듣기</button></div>
+      </div>}
       {activeTab==='play'&&<>
       <div className="ew-toolbar" role="group" aria-label="바둑 대국 조작">
         <div className="ew-toolbar-main" role="group" aria-label="첫 번째 줄: 백 응수, 패스, 무르기">
@@ -825,6 +856,7 @@ function App() {
           <p>{moveIntention?INTENTIONS.find(o=>o.key===moveIntention)?.prompt:'위험한 내 돌 → 공격할 백돌 → 연결 → 공간 넓히기 순으로 살펴봐.'}</p>
           <small>스스로 둔 수 {practiceStats.independent}회 · 도움받은 수 {practiceStats.withHelp}회 (정답률 아님)</small>
         </details>}
+        <label className="ew-alertpref"><input type="checkbox" checked={autoEmergency} onChange={e=>{const checked=e.target.checked;setAutoEmergency(checked);setEmergencyReveal(false);try{window.localStorage.setItem(URGENT_ALERTS_KEY,checked?'on':'off');}catch{/* Safari private browsing */}}}/>🚨 위급할 때만 자동 위험 힌트 표시</label>
       </section>
       {coachPanel!=='closed'&&<div className="ew-sheet-backdrop" onClick={()=>{setCoachPanel('closed');setShowSuggestions(false);setHighlight(null);}} role="presentation">
         <section className="ew-coach-sheet" role="dialog" aria-modal="true" aria-label="바둑 과외 설명" onClick={e=>e.stopPropagation()}>
