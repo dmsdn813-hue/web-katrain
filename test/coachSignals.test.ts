@@ -21,7 +21,7 @@ describe('contextual emergency teaching hints',()=>{
   expect(findEmergencyThreat(board('A1',''))).toBeNull();
  });
  it('prompts for two-liberty connected stones under contact, without showing an answer',()=>{
-  const threat=findEmergencyThreat(board('D4 D5','C4 E4'));
+  const threat=findEmergencyThreat(board('D4 D5','C4 E4 C5 E5'));
   expect(threat?.severity).toBe('pressure');
   expect(threat?.liberties).toHaveLength(2);
  });
