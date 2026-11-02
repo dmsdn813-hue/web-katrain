@@ -791,7 +791,7 @@ function App() {
         <strong>⚫ AI 예상 승률 {winChance===null?'계산 중…':`약 ${winChance}%`}</strong>
         {winChance!==null&&<span className="ew-wintrack" role="meter" aria-label="흑의 AI 예상 승률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={winChance}><span className="ew-winfill" style={{width:winChance+'%'}}/></span>}
         <small>{winChance===null?'현재 국면을 분석하고 있어.': 'KataGo 추정치 · 실제 승리 확률을 보장하지 않아.'}</small>
-      </div>
+      </div>}
 
       <div className="ew-board-area">
         <div className="ew-boardwrap" aria-label={`${displaySize}×${displaySize} 바둑판`}>
